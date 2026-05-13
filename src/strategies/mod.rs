@@ -1,7 +1,8 @@
 use crate::game::{Cell, Dir, Pos};
 
-mod random_walk;
 mod do_nothing;
+mod pathfind_to_empty;
+mod random_walk;
 
 pub trait Strategy {
     fn get_name(&self) -> &str;
@@ -12,21 +13,24 @@ pub trait Strategy {
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum Strategies {
     RandomWalkStrategy,
-    DoNothingStrategy
+    DoNothingStrategy,
+    PathfindToEmptyStrategy,
 }
 
 impl Strategies {
     pub fn list_strategies() -> Vec<Self> {
         vec![
             Self::RandomWalkStrategy,
-            Self::DoNothingStrategy
+            Self::DoNothingStrategy,
+            Self::PathfindToEmptyStrategy,
         ]
     }
 
     pub fn get(&self) -> Box<dyn Strategy> {
         match self {
             Self::RandomWalkStrategy => Box::new(random_walk::RandomWalkStrategy),
-            Self::DoNothingStrategy => Box::new(do_nothing::DoNothingStrategy)
+            Self::DoNothingStrategy => Box::new(do_nothing::DoNothingStrategy),
+            Self::PathfindToEmptyStrategy => Box::new(pathfind_to_empty::PathfindToEmptyStrategy),
         }
     }
 }

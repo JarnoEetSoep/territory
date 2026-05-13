@@ -1,28 +1,43 @@
 use core::time;
-use std::{collections::HashMap, sync::{Arc, Mutex, mpsc::{self, Sender, TryRecvError}}, thread::{self, JoinHandle}};
+use std::{
+    collections::HashMap,
+    sync::{
+        Arc, Mutex,
+        mpsc::{self, Sender, TryRecvError},
+    },
+    thread::{self, JoinHandle},
+};
 
-use egui::RichText;
+use egui::{
+    CentralPanel, Color32, MenuBar, Panel, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, Ui,
+    Vec2, Window, widgets,
+};
+#[cfg(not(target_arch = "wasm32"))]
+use egui::{Key, Modifiers};
 use egui_extras::{Column, TableBuilder};
 
-use crate::settings_panel::SettingsPanel;
+use crate::{
+    game::{Cell, Game},
+    settings_panel::{Command, SettingsPanel},
+};
 
 pub enum ThreadMessage {
     Start,
     Stop,
-    Terminate
+    Terminate,
 }
 
 pub struct AppState {
     running: bool,
-    settings_panel: crate::settings_panel::SettingsPanel,
-    game: Arc<Mutex<crate::game::Game>>,
+    settings_panel: SettingsPanel,
+    game: Arc<Mutex<Game>>,
     game_thread: Option<JoinHandle<()>>,
     tx: Sender<ThreadMessage>,
-    bins: HashMap<u8, u32>
+    bins: HashMap<u8, u32>,
 }
 
 pub struct App {
-    pub state: AppState
+    pub state: AppState,
 }
 
 impl App {
@@ -30,27 +45,31 @@ impl App {
     pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
         // This is also where you can customize the look and feel of egui using
         // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
-        let game = Arc::<Mutex<crate::game::Game>>::default();
+        let game = Arc::<Mutex<Game>>::default();
 
         let (tx, rx) = mpsc::channel::<ThreadMessage>();
         let mut running = false;
         let game_mutex = Arc::clone(&game);
 
-        let handle = thread::spawn(move || loop {
-            match rx.try_recv() {
-                Ok(msg) => {
-                    match msg {
-                        ThreadMessage::Start => { running = true; },
-                        ThreadMessage::Stop => { running = false; },
+        let handle = thread::spawn(move || {
+            loop {
+                match rx.try_recv() {
+                    Ok(msg) => match msg {
+                        ThreadMessage::Start => {
+                            running = true;
+                        }
+                        ThreadMessage::Stop => {
+                            running = false;
+                        }
                         ThreadMessage::Terminate => break,
-                    }
-                },
-                Err(TryRecvError::Disconnected) => break,
-                Err(TryRecvError::Empty) => {
-                    if running {
-                        thread::sleep(time::Duration::from_millis(50));
+                    },
+                    Err(TryRecvError::Disconnected) => break,
+                    Err(TryRecvError::Empty) => {
+                        if running {
+                            thread::sleep(time::Duration::from_millis(50));
 
-                        game_mutex.lock().unwrap().step();
+                            game_mutex.lock().unwrap().step();
+                        }
                     }
                 }
             }
@@ -63,7 +82,7 @@ impl App {
                 game,
                 game_thread: Some(handle),
                 tx,
-                bins: HashMap::new()
+                bins: HashMap::new(),
             },
         }
     }
@@ -71,11 +90,13 @@ impl App {
 
 impl eframe::App for App {
     /// Called each time the UI needs repainting, which may be many times per second.
-    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut Ui, frame: &mut eframe::Frame) {
         #[cfg(not(target_arch = "wasm32"))]
-        if ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::F11)) {
+        if ui.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F11)) {
+            use egui::ViewportCommand;
+
             let fullscreen = ui.input(|i| i.viewport().fullscreen.unwrap_or(false));
-            ui.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!fullscreen));
+            ui.send_viewport_cmd(ViewportCommand::Fullscreen(!fullscreen));
         }
 
         if ui.input(|i| i.viewport().close_requested()) {
@@ -83,17 +104,17 @@ impl eframe::App for App {
             self.state.game_thread.take().unwrap().join().unwrap();
         }
 
-        egui::Panel::top("top_panel").show_inside(ui, |ui| {
-            egui::MenuBar::new().ui(ui, |ui| {
+        Panel::top("top_panel").show_inside(ui, |ui| {
+            MenuBar::new().ui(ui, |ui| {
                 ui.visuals_mut().button_frame = false;
 
                 self.bar_contents(ui, frame);
             });
         });
 
-        let mut cmd = crate::settings_panel::Command::Nothing;
+        let mut cmd = Command::Nothing;
 
-        egui::CentralPanel::default().show_inside(ui, |ui| {
+        CentralPanel::default().show_inside(ui, |ui| {
             self.settings_panel(ui, frame, &mut cmd);
 
             self.game_panel(ui, frame);
@@ -102,23 +123,30 @@ impl eframe::App for App {
         });
 
         match cmd {
-            crate::settings_panel::Command::Nothing => {},
-            crate::settings_panel::Command::ApplyGridSize => {
-                self.state.game.lock().unwrap().resize(self.state.settings_panel.width, self.state.settings_panel.height);
-            },
-            crate::settings_panel::Command::AddPlayer => {
+            Command::Nothing => {}
+            Command::ApplyGridSize => {
+                self.state.game.lock().unwrap().resize(
+                    self.state.settings_panel.width,
+                    self.state.settings_panel.height,
+                );
+            }
+            Command::AddPlayer => {
                 self.state.game.lock().unwrap().add_player();
-            },
-            crate::settings_panel::Command::RemovePlayer(id) => {
+            }
+            Command::RemovePlayer(id) => {
                 self.state.game.lock().unwrap().remove_player(id);
-            },
-            crate::settings_panel::Command::SetStrategy(id, strategy) => {
-                self.state.game.lock().unwrap().set_player_strategy(id, strategy);
-            },
-            crate::settings_panel::Command::MovePlayer(id, x, y) => {
+            }
+            Command::SetStrategy(id, strategy) => {
+                self.state
+                    .game
+                    .lock()
+                    .unwrap()
+                    .set_player_strategy(id, strategy);
+            }
+            Command::MovePlayer(id, x, y) => {
                 self.state.game.lock().unwrap().move_player_to(x, y, id);
-            },
-            crate::settings_panel::Command::DisablePlayer(id) => {
+            }
+            Command::DisablePlayer(id) => {
                 self.state.game.lock().unwrap().disable_player(id);
             }
         };
@@ -128,10 +156,11 @@ impl eframe::App for App {
 }
 
 impl App {
-    fn settings_panel(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame, cmd: &mut crate::settings_panel::Command) {
-        let is_open = self.state.settings_panel.open || ui.memory(|mem| mem.everything_is_visible());
+    fn settings_panel(&mut self, ui: &mut Ui, frame: &mut eframe::Frame, cmd: &mut Command) {
+        let is_open =
+            self.state.settings_panel.open || ui.memory(|mem| mem.everything_is_visible());
 
-        egui::Panel::left("settings_panel")
+        Panel::left("settings_panel")
             .resizable(true)
             .show_animated_inside(ui, is_open, |ui| {
                 ui.add_space(4.0);
@@ -140,28 +169,33 @@ impl App {
                 });
 
                 ui.separator();
-                self.state.settings_panel.ui(ui, frame, cmd, &self.state.game.lock().unwrap().players);
+                self.state.settings_panel.ui(
+                    ui,
+                    frame,
+                    cmd,
+                    &self.state.game.lock().unwrap().players,
+                );
             });
     }
 
-    fn bar_contents(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+    fn bar_contents(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         ui.add_space(4.0);
 
-        egui::widgets::global_theme_preference_switch(ui);
+        widgets::global_theme_preference_switch(ui);
 
         ui.separator();
-        
+
         ui.toggle_value(&mut self.state.settings_panel.open, "Settings");
 
         ui.separator();
 
         let content = match (self.state.running, ui.visuals().dark_mode) {
-            (true, true) => RichText::new("⏸").color(egui::Color32::LIGHT_RED),
-            (false, true) => RichText::new("▶").color(egui::Color32::LIGHT_GREEN),
-            (true, false) => RichText::new("⏸").color(egui::Color32::RED),
-            (false, false) => RichText::new("▶").color(egui::Color32::GREEN)
+            (true, true) => RichText::new("⏸").color(Color32::LIGHT_RED),
+            (false, true) => RichText::new("▶").color(Color32::LIGHT_GREEN),
+            (true, false) => RichText::new("⏸").color(Color32::RED),
+            (false, false) => RichText::new("▶").color(Color32::GREEN),
         };
-        
+
         if ui.button(content).clicked() {
             self.state.running = !self.state.running;
 
@@ -173,11 +207,8 @@ impl App {
         }
     }
 
-    fn game_panel(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        let (response, painter) = ui.allocate_painter(
-            ui.available_size(),
-            egui::Sense::click()
-        );
+    fn game_panel(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
+        let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::click());
 
         self.state.bins.clear();
 
@@ -201,63 +232,80 @@ impl App {
 
         for y in 0..height {
             for x in 0..width {
-                let center = egui::Pos2::new(
+                let center = Pos2::new(
                     response.rect.left() + offset_x + (f32::from(x) + 0.5) * cell_size,
-                    response.rect.top() + offset_y + (f32::from(y) + 0.5) * cell_size
+                    response.rect.top() + offset_y + (f32::from(y) + 0.5) * cell_size,
                 );
 
                 let cell = game.get_cell_at(x, y);
 
                 let fill_color = match cell {
-                    crate::game::Cell::Empty => egui::Color32::WHITE,
-                    crate::game::Cell::Player(id) => {
-                        let rgb = self.state.settings_panel.players_settings.iter().filter(|settings| settings.id == *id).next().unwrap().color;
+                    Cell::Empty => Color32::WHITE,
+                    Cell::Player(id) => {
+                        let rgb = self
+                            .state
+                            .settings_panel
+                            .players_settings
+                            .iter()
+                            .filter(|settings| settings.id == *id)
+                            .next()
+                            .unwrap()
+                            .color;
 
-                        egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2])
-                    },
-                    crate::game::Cell::PlayerClaimed(id) => {
-                        let rgb = self.state.settings_panel.players_settings.iter().filter(|settings| settings.id == *id).next().unwrap().color;
+                        Color32::from_rgb(rgb[0], rgb[1], rgb[2])
+                    }
+                    Cell::PlayerClaimed(id) => {
+                        let rgb = self
+                            .state
+                            .settings_panel
+                            .players_settings
+                            .iter()
+                            .filter(|settings| settings.id == *id)
+                            .next()
+                            .unwrap()
+                            .color;
 
-                        egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2]).gamma_multiply(0.5)
-                    },
+                        Color32::from_rgb(rgb[0], rgb[1], rgb[2]).gamma_multiply(0.5)
+                    }
                 };
 
                 match cell {
-                    crate::game::Cell::Empty => {},
-                    crate::game::Cell::Player(id) | crate::game::Cell::PlayerClaimed(id) => {
+                    Cell::Empty => {}
+                    Cell::Player(id) | Cell::PlayerClaimed(id) => {
                         let value = self.state.bins.get(id).unwrap_or(&0) + 1;
                         self.state.bins.insert(*id, value);
                     }
                 }
-                
-                painter.rect(egui::Rect::from_center_size(
-                    center,
-                    egui::Vec2::new(cell_size, cell_size)),
+
+                painter.rect(
+                    Rect::from_center_size(center, Vec2::new(cell_size, cell_size)),
                     0.0,
                     fill_color,
-                    egui::Stroke::new(1.0, egui::Color32::GRAY),
-                    egui::StrokeKind::Middle
+                    Stroke::new(1.0, Color32::GRAY),
+                    StrokeKind::Middle,
                 );
             }
         }
     }
 
-    fn stats_window(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        egui::Window::new("Stats").resizable(false).show(ui.ctx(), |ui| {
+    fn stats_window(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
+        Window::new("Stats").resizable(false).show(ui.ctx(), |ui| {
             TableBuilder::new(ui)
                 .id_salt("stats")
                 .column(Column::auto())
                 .column(Column::auto())
                 .column(Column::auto())
                 .body(|mut body| {
-                    let total = u32::from(self.state.settings_panel.width) * u32::from(self.state.settings_panel.height);
+                    let total = u32::from(self.state.settings_panel.width)
+                        * u32::from(self.state.settings_panel.height);
 
                     for settings in &self.state.settings_panel.players_settings {
                         if settings.enabled {
                             body.row(20.0, |mut row| {
                                 row.col(|ui| {
-                                    let (r, g, b) = (settings.color[0], settings.color[1], settings.color[2]);
-                                    ui.colored_label(egui::Color32::from_rgb(r, g, b), "⬛");
+                                    let (r, g, b) =
+                                        (settings.color[0], settings.color[1], settings.color[2]);
+                                    ui.colored_label(Color32::from_rgb(r, g, b), "⬛");
                                 });
 
                                 row.col(|ui| {
@@ -269,7 +317,10 @@ impl App {
                                 row.col(|ui| {
                                     ui.horizontal(|ui| {
                                         let taken = self.state.bins.get(&settings.id).unwrap_or(&0);
-                                        ui.label(format!("{:.2}%", f64::from(*taken) / f64::from(total) * 100.));
+                                        ui.label(format!(
+                                            "{:.2}%",
+                                            f64::from(*taken) / f64::from(total) * 100.
+                                        ));
                                     });
                                 });
                             });

@@ -1,6 +1,11 @@
+use eframe::Frame;
+use egui::{Button, ComboBox, DragValue, TextEdit, Ui};
 use egui_extras::{Column, TableBuilder};
 
-use crate::strategies::Strategies;
+use crate::{
+    game::{Player, Pos},
+    strategies::Strategies,
+};
 
 #[derive(Debug)]
 pub struct PlayerSettings {
@@ -10,7 +15,7 @@ pub struct PlayerSettings {
     pub strategy: Strategies,
     pub x: u16,
     pub y: u16,
-    pub enabled: bool
+    pub enabled: bool,
 }
 
 #[derive(Default)]
@@ -18,7 +23,7 @@ pub struct SettingsPanel {
     pub open: bool,
     pub width: u16,
     pub height: u16,
-    pub players_settings: Vec<PlayerSettings>
+    pub players_settings: Vec<PlayerSettings>,
 }
 
 #[derive(Default)]
@@ -30,11 +35,17 @@ pub enum Command {
     RemovePlayer(u8),
     SetStrategy(u8, Strategies),
     MovePlayer(u8, u16, u16),
-    DisablePlayer(u8)
+    DisablePlayer(u8),
 }
 
 impl SettingsPanel {
-    pub fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame, cmd: &mut Command, players: &Vec<crate::game::Player>) {
+    pub fn ui(
+        &mut self,
+        ui: &mut Ui,
+        _frame: &mut Frame,
+        cmd: &mut Command,
+        players: &Vec<Player>,
+    ) {
         TableBuilder::new(ui)
             .id_salt("grid_settings")
             .column(Column::remainder())
@@ -46,7 +57,7 @@ impl SettingsPanel {
                     });
 
                     row.col(|ui| {
-                        ui.add(egui::DragValue::new(&mut self.width));
+                        ui.add(DragValue::new(&mut self.width));
                     });
                 });
 
@@ -56,7 +67,7 @@ impl SettingsPanel {
                     });
 
                     row.col(|ui| {
-                        ui.add(egui::DragValue::new(&mut self.height));
+                        ui.add(DragValue::new(&mut self.height));
                     });
                 });
 
@@ -64,7 +75,7 @@ impl SettingsPanel {
                     row.col(|_| {});
 
                     row.col(|ui| {
-                        if ui.add(egui::Button::new("Apply")).clicked() {
+                        if ui.add(Button::new("Apply")).clicked() {
                             *cmd = Command::ApplyGridSize;
                         }
                     });
@@ -76,7 +87,10 @@ impl SettingsPanel {
                     });
 
                     row.col(|ui| {
-                        if ui.add_sized(ui.available_size(), egui::Button::new("Add")).clicked() {
+                        if ui
+                            .add_sized(ui.available_size(), Button::new("Add"))
+                            .clicked()
+                        {
                             *cmd = Command::AddPlayer;
                         }
                     });
@@ -90,9 +104,13 @@ impl SettingsPanel {
             .column(Column::auto())
             .column(Column::remainder())
             .column(Column::auto())
-            .body(|mut body| {                
+            .body(|mut body| {
                 for player in players {
-                    let player_settings: Option<&mut PlayerSettings> = self.players_settings.iter_mut().filter(|p| p.id == player.id).next();
+                    let player_settings: Option<&mut PlayerSettings> = self
+                        .players_settings
+                        .iter_mut()
+                        .filter(|p| p.id == player.id)
+                        .next();
 
                     match player_settings {
                         Some(settings) => {
@@ -100,7 +118,11 @@ impl SettingsPanel {
                                 row.col(|ui| {
                                     if ui.checkbox(&mut settings.enabled, "").changed() {
                                         if settings.enabled {
-                                            *cmd = Command::MovePlayer(settings.id, settings.x, settings.y);
+                                            *cmd = Command::MovePlayer(
+                                                settings.id,
+                                                settings.x,
+                                                settings.y,
+                                            );
                                         } else {
                                             *cmd = Command::DisablePlayer(settings.id);
                                         }
@@ -108,19 +130,26 @@ impl SettingsPanel {
                                 });
 
                                 row.col(|ui| {
-                                    ui.add(egui::TextEdit::singleline(&mut settings.name));
+                                    ui.add(TextEdit::singleline(&mut settings.name));
                                 });
 
                                 row.col(|ui| {
                                     let before = settings.strategy;
 
-                                    egui::ComboBox::from_id_salt(format!("player_{}_strategy_selector", settings.id))
-                                        .selected_text(settings.strategy.get().get_name())
-                                        .show_ui(ui, |ui| {
-                                            for strategy in Strategies::list_strategies() {
-                                                ui.selectable_value(&mut settings.strategy, strategy, strategy.get().get_name());
-                                            }
-                                        });
+                                    ComboBox::from_id_salt(format!(
+                                        "player_{}_strategy_selector",
+                                        settings.id
+                                    ))
+                                    .selected_text(settings.strategy.get().get_name())
+                                    .show_ui(ui, |ui| {
+                                        for strategy in Strategies::list_strategies() {
+                                            ui.selectable_value(
+                                                &mut settings.strategy,
+                                                strategy,
+                                                strategy.get().get_name(),
+                                            );
+                                        }
+                                    });
 
                                     if before != settings.strategy {
                                         *cmd = Command::SetStrategy(settings.id, settings.strategy);
@@ -142,13 +171,23 @@ impl SettingsPanel {
                                 row.col(|ui| {
                                     ui.horizontal(|ui| {
                                         ui.label("(");
-                                        let x = ui.add(egui::DragValue::new(&mut settings.x));
+                                        let x = ui.add(
+                                            DragValue::new(&mut settings.x)
+                                                .range(0..=self.width - 1),
+                                        );
                                         ui.label(",");
-                                        let y = ui.add(egui::DragValue::new(&mut settings.y));
+                                        let y = ui.add(
+                                            DragValue::new(&mut settings.y)
+                                                .range(0..=self.height - 1),
+                                        );
                                         ui.label(")");
 
                                         if (x.changed() || y.changed()) && settings.enabled {
-                                            *cmd = Command::MovePlayer(settings.id, settings.x, settings.y);
+                                            *cmd = Command::MovePlayer(
+                                                settings.id,
+                                                settings.x,
+                                                settings.y,
+                                            );
                                         }
                                     });
                                 });
@@ -157,19 +196,19 @@ impl SettingsPanel {
                                     ui.color_edit_button_srgb(&mut settings.color);
                                 });
                             });
-                        },
+                        }
                         None => {
                             self.players_settings.push(PlayerSettings {
                                 id: player.id,
                                 color: [255, 255, 255],
                                 name: "New player".to_string(),
                                 strategy: player.strategy,
-                                x: player.position.unwrap_or(crate::game::Pos::ZERO).x,
-                                y: player.position.unwrap_or(crate::game::Pos::ZERO).y,
-                                enabled: player.position.is_some()
+                                x: player.position.unwrap_or(Pos::ZERO).x,
+                                y: player.position.unwrap_or(Pos::ZERO).y,
+                                enabled: player.position.is_some(),
                             });
                         }
-                    }            
+                    }
                 }
             });
     }

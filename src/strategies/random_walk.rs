@@ -1,6 +1,9 @@
 use rand::seq::IndexedRandom;
 
-use crate::{game::{Cell, Dir, Pos}, strategies::Strategy};
+use crate::{
+    game::{Cell, Dir, Pos},
+    strategies::Strategy,
+};
 
 pub struct RandomWalkStrategy;
 
@@ -15,27 +18,27 @@ impl Strategy for RandomWalkStrategy {
 
         for dir in all_dirs {
             match dir {
-                Dir::None => {},
+                Dir::None => {}
                 Dir::Up => {
                     if pos.y == 0 {
                         continue;
                     }
-                },
+                }
                 Dir::Down => {
                     if usize::from(pos.y) == grid.len() - 1 {
                         continue;
                     }
-                },
+                }
                 Dir::Left => {
                     if pos.x == 0 {
                         continue;
                     }
-                },
+                }
                 Dir::Right => {
                     if usize::from(pos.x) == grid[0].len() - 1 {
                         continue;
                     }
-                },
+                }
             }
 
             let new_pos = pos + dir;
@@ -46,12 +49,12 @@ impl Strategy for RandomWalkStrategy {
                     if player_id == id {
                         possible_dirs.push(dir);
                     }
-                },
+                }
                 Cell::PlayerClaimed(player_id) => {
                     if player_id == id {
                         possible_dirs.push(dir);
                     }
-                },
+                }
             }
         }
 

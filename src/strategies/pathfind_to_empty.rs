@@ -3,11 +3,11 @@ use crate::{
     strategies::Strategy,
 };
 
-pub struct DoNothingStrategy;
+pub struct PathfindToEmptyStrategy;
 
-impl Strategy for DoNothingStrategy {
+impl Strategy for PathfindToEmptyStrategy {
     fn get_name(&self) -> &str {
-        "Do nothing"
+        "Pathfind to empty"
     }
 
     fn step(&self, _grid: &Vec<Vec<Cell>>, _pos: Pos, _id: u8) -> Dir {

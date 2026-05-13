@@ -5,7 +5,7 @@ use crate::strategies::Strategies;
 #[derive(Clone, Copy, Debug)]
 pub struct Pos {
     pub x: u16,
-    pub y: u16
+    pub y: u16,
 }
 
 #[derive(PartialEq, Clone, Copy, Debug)]
@@ -14,7 +14,7 @@ pub enum Dir {
     Up,
     Down,
     Left,
-    Right
+    Right,
 }
 
 impl Add<Dir> for Pos {
@@ -23,10 +23,22 @@ impl Add<Dir> for Pos {
     fn add(self, rhs: Dir) -> Self::Output {
         match rhs {
             Dir::None => self,
-            Dir::Up => Pos { x: self.x, y: self.y - 1 },
-            Dir::Down => Pos { x: self.x, y: self.y + 1 },
-            Dir::Left => Pos { x: self.x - 1, y: self.y },
-            Dir::Right => Pos { x: self.x + 1, y: self.y },
+            Dir::Up => Pos {
+                x: self.x,
+                y: self.y - 1,
+            },
+            Dir::Down => Pos {
+                x: self.x,
+                y: self.y + 1,
+            },
+            Dir::Left => Pos {
+                x: self.x - 1,
+                y: self.y,
+            },
+            Dir::Right => Pos {
+                x: self.x + 1,
+                y: self.y,
+            },
         }
     }
 }
@@ -39,7 +51,7 @@ impl Pos {
 pub struct Player {
     pub id: u8,
     pub strategy: Strategies,
-    pub position: Option<Pos>
+    pub position: Option<Pos>,
 }
 
 #[derive(Default, Clone, Copy)]
@@ -47,7 +59,7 @@ pub enum Cell {
     #[default]
     Empty,
     Player(u8),
-    PlayerClaimed(u8)
+    PlayerClaimed(u8),
 }
 
 #[derive(Default)]
@@ -56,7 +68,7 @@ pub struct Game {
     grid: Vec<Vec<Cell>>,
     pub width: u16,
     pub height: u16,
-    last_id: u8
+    last_id: u8,
 }
 
 impl Game {
@@ -82,23 +94,32 @@ impl Game {
                 let new_pos = pos + dir;
 
                 if new_pos.x > self.width - 1 || new_pos.y > self.height - 1 {
-                    panic!("Player with strategy {} moved out of bounds", player.strategy.get().get_name());
+                    panic!(
+                        "Player with strategy {} moved out of bounds",
+                        player.strategy.get().get_name()
+                    );
                 }
 
                 match self.grid[usize::from(new_pos.y)][usize::from(new_pos.x)] {
-                    Cell::Empty => {},
+                    Cell::Empty => {}
                     Cell::Player(id) => {
                         if id != player.id {
-                            panic!("Player with strategy {} tried to move on top of other player", player.strategy.get().get_name());
+                            panic!(
+                                "Player with strategy {} tried to move on top of other player",
+                                player.strategy.get().get_name()
+                            );
                         }
-                    },
+                    }
                     Cell::PlayerClaimed(id) => {
                         if id != player.id {
-                            panic!("Player with strategy {} tried to move on territory of other player", player.strategy.get().get_name());
+                            panic!(
+                                "Player with strategy {} tried to move on territory of other player",
+                                player.strategy.get().get_name()
+                            );
                         }
-                    },
+                    }
                 }
-                
+
                 self.grid[usize::from(pos.y)][usize::from(pos.x)] = Cell::PlayerClaimed(player.id);
                 self.grid[usize::from(new_pos.y)][usize::from(new_pos.x)] = Cell::Player(player.id);
                 player.position = Some(new_pos);
@@ -133,7 +154,8 @@ impl Game {
         for player in &mut self.players {
             if player.id == id {
                 if let Some(pos) = player.position {
-                    self.grid[usize::from(pos.y)][usize::from(pos.x)] = Cell::PlayerClaimed(player.id);
+                    self.grid[usize::from(pos.y)][usize::from(pos.x)] =
+                        Cell::PlayerClaimed(player.id);
                 }
 
                 player.position = None;
@@ -161,7 +183,7 @@ impl Game {
         self.players.push(Player {
             id: self.last_id,
             strategy: Strategies::RandomWalkStrategy,
-            position: None
+            position: None,
         });
 
         self.last_id
@@ -173,7 +195,7 @@ impl Game {
         for row in &mut self.grid {
             for cell in row {
                 match cell {
-                    Cell::Empty => {},
+                    Cell::Empty => {}
                     Cell::Player(player_id) | Cell::PlayerClaimed(player_id) => {
                         if *player_id == id {
                             *cell = Cell::Empty;
@@ -223,18 +245,11 @@ fn capture_enclosed(grid: &mut Vec<Vec<Cell>>, player_id: u8) {
 
         for (nx, ny) in neighbors {
             if nx < width && ny < height {
-                enqueue_if_open(
-                    grid,
-                    &mut visited,
-                    &mut queue,
-                    nx,
-                    ny,
-                    &is_wall,
-                );
+                enqueue_if_open(grid, &mut visited, &mut queue, nx, ny, &is_wall);
             }
         }
     }
-    
+
     // Any unvisited non-wall cell is enclosed
     for y in 0..height {
         for x in 0..width {
@@ -252,8 +267,7 @@ fn enqueue_if_open<F>(
     x: usize,
     y: usize,
     is_wall: &F,
-)
-where
+) where
     F: Fn(Cell, usize, usize) -> bool,
 {
     if !visited[y][x] && !is_wall(grid[y][x], x, y) {
