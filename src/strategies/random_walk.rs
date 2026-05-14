@@ -1,5 +1,3 @@
-use rand::seq::IndexedRandom;
-
 use crate::{
     game::{Cell, Dir, Pos},
     strategies::Strategy,
@@ -58,6 +56,6 @@ impl Strategy for RandomWalkStrategy {
             }
         }
 
-        *possible_dirs.choose(&mut rand::rng()).unwrap()
+        possible_dirs[fastrand::usize(..possible_dirs.len())]
     }
 }

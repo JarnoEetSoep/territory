@@ -52,7 +52,7 @@ fn main() {
             .start(
                 canvas,
                 web_options,
-                Box::new(|cc| Ok(Box::new(territory::App::new(cc)))),
+                Box::new(|cc| Ok(Box::new(territory::app::App::new(cc)))),
             )
             .await;
 

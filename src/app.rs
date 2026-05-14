@@ -31,7 +31,9 @@ pub struct AppState {
     running: bool,
     settings_panel: SettingsPanel,
     game: Arc<Mutex<Game>>,
+    #[cfg(not(target_arch = "wasm32"))]
     game_thread: Option<JoinHandle<()>>,
+    #[cfg(not(target_arch = "wasm32"))]
     tx: Sender<ThreadMessage>,
     bins: HashMap<u8, u32>,
 }
@@ -47,10 +49,14 @@ impl App {
         // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
         let game = Arc::<Mutex<Game>>::default();
 
+        #[cfg(not(target_arch = "wasm32"))]
         let (tx, rx) = mpsc::channel::<ThreadMessage>();
+        #[cfg(not(target_arch = "wasm32"))]
         let mut running = false;
+        #[cfg(not(target_arch = "wasm32"))]
         let game_mutex = Arc::clone(&game);
 
+        #[cfg(not(target_arch = "wasm32"))]
         let handle = thread::spawn(move || {
             loop {
                 match rx.try_recv() {
@@ -80,7 +86,9 @@ impl App {
                 running: false,
                 settings_panel: SettingsPanel::default(),
                 game,
+                #[cfg(not(target_arch = "wasm32"))]
                 game_thread: Some(handle),
+                #[cfg(not(target_arch = "wasm32"))]
                 tx,
                 bins: HashMap::new(),
             },
@@ -99,9 +107,15 @@ impl eframe::App for App {
             ui.send_viewport_cmd(ViewportCommand::Fullscreen(!fullscreen));
         }
 
+        #[cfg(not(target_arch = "wasm32"))]
         if ui.input(|i| i.viewport().close_requested()) {
             self.state.tx.send(ThreadMessage::Terminate).unwrap();
             self.state.game_thread.take().unwrap().join().unwrap();
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        if self.state.running {
+            self.state.game.lock().unwrap().step();
         }
 
         Panel::top("top_panel").show_inside(ui, |ui| {
@@ -151,7 +165,7 @@ impl eframe::App for App {
             }
         };
 
-        ui.ctx().request_repaint_after_secs(1.0 / 30.0);
+        ui.ctx().request_repaint_after_secs(0.05);
     }
 }
 
@@ -199,6 +213,7 @@ impl App {
         if ui.button(content).clicked() {
             self.state.running = !self.state.running;
 
+            #[cfg(not(target_arch = "wasm32"))]
             if self.state.running {
                 self.state.tx.send(ThreadMessage::Start).unwrap();
             } else {

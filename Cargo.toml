@@ -16,7 +16,7 @@ egui = "0.34.1"
 eframe = "0.34.1"
 log = "0.4.27"
 egui_extras = "0.34.2"
-rand = "0.10.1"
+fastrand = "2.4.1"
 
 # native:
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
