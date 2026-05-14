@@ -3,6 +3,7 @@ use crate::game::{Cell, Dir, Pos};
 mod do_nothing;
 mod pathfind_to_empty;
 mod random_walk;
+mod prioritise_empty;
 
 pub trait Strategy {
     fn get_name(&self) -> &'static str;
@@ -15,6 +16,7 @@ pub enum Strategies {
     RandomWalkStrategy,
     DoNothingStrategy,
     PathfindToEmptyStrategy,
+    PrioritiseEmptyStrategy,
 }
 
 impl Strategies {
@@ -23,6 +25,7 @@ impl Strategies {
             Self::RandomWalkStrategy,
             Self::DoNothingStrategy,
             Self::PathfindToEmptyStrategy,
+            Self::PrioritiseEmptyStrategy,
         ]
     }
 
@@ -31,6 +34,7 @@ impl Strategies {
             Self::RandomWalkStrategy => Box::new(random_walk::RandomWalkStrategy),
             Self::DoNothingStrategy => Box::new(do_nothing::DoNothingStrategy),
             Self::PathfindToEmptyStrategy => Box::new(pathfind_to_empty::PathfindToEmptyStrategy),
+            Self::PrioritiseEmptyStrategy => Box::new(prioritise_empty::PrioritiseEmptyStrategy)
         }
     }
 }
