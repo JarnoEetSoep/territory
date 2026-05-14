@@ -38,6 +38,7 @@ pub enum Command {
     DisablePlayer(u8),
 }
 
+#[expect(clippy::too_many_lines)]
 impl SettingsPanel {
     pub fn ui(
         &mut self,
@@ -106,11 +107,8 @@ impl SettingsPanel {
             .column(Column::auto())
             .body(|mut body| {
                 for player in players {
-                    let player_settings: Option<&mut PlayerSettings> = self
-                        .players_settings
-                        .iter_mut()
-                        .filter(|p| p.id == player.id)
-                        .next();
+                    let player_settings: Option<&mut PlayerSettings> =
+                        self.players_settings.iter_mut().find(|p| p.id == player.id);
 
                     match player_settings {
                         Some(settings) => {
@@ -201,7 +199,7 @@ impl SettingsPanel {
                             self.players_settings.push(PlayerSettings {
                                 id: player.id,
                                 color: [255, 255, 255],
-                                name: "New player".to_string(),
+                                name: "New player".to_owned(),
                                 strategy: player.strategy,
                                 x: player.position.unwrap_or(Pos::ZERO).x,
                                 y: player.position.unwrap_or(Pos::ZERO).y,

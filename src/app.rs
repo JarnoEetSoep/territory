@@ -1,10 +1,12 @@
+#[cfg(not(target_arch = "wasm32"))]
 use core::time;
 use std::{
     collections::HashMap,
-    sync::{
-        Arc, Mutex,
-        mpsc::{self, Sender, TryRecvError},
-    },
+    sync::{Arc, Mutex},
+};
+#[cfg(not(target_arch = "wasm32"))]
+use std::{
+    sync::mpsc::{self, Sender, TryRecvError},
     thread::{self, JoinHandle},
 };
 
@@ -74,7 +76,10 @@ impl App {
                         if running {
                             thread::sleep(time::Duration::from_millis(50));
 
-                            game_mutex.lock().unwrap().step();
+                            game_mutex
+                                .lock()
+                                .expect("Error while acquiring lock on game mutex")
+                                .step();
                         }
                     }
                 }
@@ -109,13 +114,25 @@ impl eframe::App for App {
 
         #[cfg(not(target_arch = "wasm32"))]
         if ui.input(|i| i.viewport().close_requested()) {
-            self.state.tx.send(ThreadMessage::Terminate).unwrap();
-            self.state.game_thread.take().unwrap().join().unwrap();
+            self.state
+                .tx
+                .send(ThreadMessage::Terminate)
+                .expect("Error while sending Terminate ThreadMessage");
+            self.state
+                .game_thread
+                .take()
+                .expect("Error while take()-ing game thread")
+                .join()
+                .expect("Error while joining game thread");
         }
 
         #[cfg(target_arch = "wasm32")]
         if self.state.running {
-            self.state.game.lock().unwrap().step();
+            self.state
+                .game
+                .lock()
+                .expect("Error while acquiring lock on game mutex")
+                .step();
         }
 
         Panel::top("top_panel").show_inside(ui, |ui| {
@@ -139,31 +156,51 @@ impl eframe::App for App {
         match cmd {
             Command::Nothing => {}
             Command::ApplyGridSize => {
-                self.state.game.lock().unwrap().resize(
-                    self.state.settings_panel.width,
-                    self.state.settings_panel.height,
-                );
+                self.state
+                    .game
+                    .lock()
+                    .expect("Error while acquiring lock on game mutex")
+                    .resize(
+                        self.state.settings_panel.width,
+                        self.state.settings_panel.height,
+                    );
             }
             Command::AddPlayer => {
-                self.state.game.lock().unwrap().add_player();
+                self.state
+                    .game
+                    .lock()
+                    .expect("Error while acquiring lock on game mutex")
+                    .add_player();
             }
             Command::RemovePlayer(id) => {
-                self.state.game.lock().unwrap().remove_player(id);
+                self.state
+                    .game
+                    .lock()
+                    .expect("Error while acquiring lock on game mutex")
+                    .remove_player(id);
             }
             Command::SetStrategy(id, strategy) => {
                 self.state
                     .game
                     .lock()
-                    .unwrap()
+                    .expect("Error while acquiring lock on game mutex")
                     .set_player_strategy(id, strategy);
             }
             Command::MovePlayer(id, x, y) => {
-                self.state.game.lock().unwrap().move_player_to(x, y, id);
+                self.state
+                    .game
+                    .lock()
+                    .expect("Error while acquiring lock on game mutex")
+                    .move_player_to(x, y, id);
             }
             Command::DisablePlayer(id) => {
-                self.state.game.lock().unwrap().disable_player(id);
+                self.state
+                    .game
+                    .lock()
+                    .expect("Error while acquiring lock on game mutex")
+                    .disable_player(id);
             }
-        };
+        }
 
         ui.ctx().request_repaint_after_secs(0.05);
     }
@@ -187,7 +224,12 @@ impl App {
                     ui,
                     frame,
                     cmd,
-                    &self.state.game.lock().unwrap().players,
+                    &self
+                        .state
+                        .game
+                        .lock()
+                        .expect("Error while acquiring lock on game mutex")
+                        .players,
                 );
             });
     }
@@ -215,9 +257,15 @@ impl App {
 
             #[cfg(not(target_arch = "wasm32"))]
             if self.state.running {
-                self.state.tx.send(ThreadMessage::Start).unwrap();
+                self.state
+                    .tx
+                    .send(ThreadMessage::Start)
+                    .expect("Error while sending Start ThreadMessage");
             } else {
-                self.state.tx.send(ThreadMessage::Stop).unwrap();
+                self.state
+                    .tx
+                    .send(ThreadMessage::Stop)
+                    .expect("Error while sending Stop ThreadMessage");
             }
         }
     }
@@ -227,7 +275,11 @@ impl App {
 
         self.state.bins.clear();
 
-        let game = self.state.game.lock().unwrap();
+        let game = self
+            .state
+            .game
+            .lock()
+            .expect("Error while acquiring lock on game mutex");
 
         let width = game.width;
         let height = game.height;
@@ -254,35 +306,25 @@ impl App {
 
                 let cell = game.get_cell_at(x, y);
 
-                let fill_color = match cell {
+                let mut fill_color = match cell {
                     Cell::Empty => Color32::WHITE,
-                    Cell::Player(id) => {
+                    Cell::Player(id) | Cell::PlayerClaimed(id) => {
                         let rgb = self
                             .state
                             .settings_panel
                             .players_settings
                             .iter()
-                            .filter(|settings| settings.id == *id)
-                            .next()
-                            .unwrap()
+                            .find(|settings| settings.id == *id)
+                            .expect("Player not found")
                             .color;
 
                         Color32::from_rgb(rgb[0], rgb[1], rgb[2])
                     }
-                    Cell::PlayerClaimed(id) => {
-                        let rgb = self
-                            .state
-                            .settings_panel
-                            .players_settings
-                            .iter()
-                            .filter(|settings| settings.id == *id)
-                            .next()
-                            .unwrap()
-                            .color;
-
-                        Color32::from_rgb(rgb[0], rgb[1], rgb[2]).gamma_multiply(0.5)
-                    }
                 };
+
+                if let Cell::PlayerClaimed(_) = cell {
+                    fill_color = fill_color.gamma_multiply(0.5);
+                }
 
                 match cell {
                     Cell::Empty => {}
@@ -303,7 +345,7 @@ impl App {
         }
     }
 
-    fn stats_window(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
+    fn stats_window(&self, ui: &Ui, _frame: &mut eframe::Frame) {
         Window::new("Stats").resizable(false).show(ui.ctx(), |ui| {
             TableBuilder::new(ui)
                 .id_salt("stats")

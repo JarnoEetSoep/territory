@@ -6,11 +6,11 @@ use crate::{
 pub struct RandomWalkStrategy;
 
 impl Strategy for RandomWalkStrategy {
-    fn get_name(&self) -> &str {
+    fn get_name(&self) -> &'static str {
         "Random walk"
     }
 
-    fn step(&self, grid: &Vec<Vec<Cell>>, pos: Pos, id: u8) -> Dir {
+    fn step(&self, grid: &[Vec<Cell>], pos: Pos, id: u8) -> Dir {
         let all_dirs = vec![Dir::None, Dir::Up, Dir::Down, Dir::Left, Dir::Right];
         let mut possible_dirs: Vec<Dir> = Vec::new();
 
@@ -43,12 +43,7 @@ impl Strategy for RandomWalkStrategy {
 
             match grid[usize::from(new_pos.y)][usize::from(new_pos.x)] {
                 Cell::Empty => possible_dirs.push(dir),
-                Cell::Player(player_id) => {
-                    if player_id == id {
-                        possible_dirs.push(dir);
-                    }
-                }
-                Cell::PlayerClaimed(player_id) => {
+                Cell::Player(player_id) | Cell::PlayerClaimed(player_id) => {
                     if player_id == id {
                         possible_dirs.push(dir);
                     }

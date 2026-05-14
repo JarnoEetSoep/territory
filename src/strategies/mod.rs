@@ -5,12 +5,12 @@ mod pathfind_to_empty;
 mod random_walk;
 
 pub trait Strategy {
-    fn get_name(&self) -> &str;
+    fn get_name(&self) -> &'static str;
 
-    fn step(&self, grid: &Vec<Vec<Cell>>, pos: Pos, id: u8) -> Dir;
+    fn step(&self, grid: &[Vec<Cell>], pos: Pos, id: u8) -> Dir;
 }
 
-#[derive(PartialEq, Clone, Copy, Debug)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum Strategies {
     RandomWalkStrategy,
     DoNothingStrategy,

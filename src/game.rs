@@ -8,7 +8,7 @@ pub struct Pos {
     pub y: u16,
 }
 
-#[derive(PartialEq, Clone, Copy, Debug)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum Dir {
     None,
     Up,
@@ -18,24 +18,24 @@ pub enum Dir {
 }
 
 impl Add<Dir> for Pos {
-    type Output = Pos;
+    type Output = Self;
 
     fn add(self, rhs: Dir) -> Self::Output {
         match rhs {
             Dir::None => self,
-            Dir::Up => Pos {
+            Dir::Up => Self {
                 x: self.x,
                 y: self.y - 1,
             },
-            Dir::Down => Pos {
+            Dir::Down => Self {
                 x: self.x,
                 y: self.y + 1,
             },
-            Dir::Left => Pos {
+            Dir::Left => Self {
                 x: self.x - 1,
                 y: self.y,
             },
-            Dir::Right => Pos {
+            Dir::Right => Self {
                 x: self.x + 1,
                 y: self.y,
             },
@@ -93,30 +93,27 @@ impl Game {
                 let dir = player.strategy.get().step(&self.grid, pos, player.id);
                 let new_pos = pos + dir;
 
-                if new_pos.x > self.width - 1 || new_pos.y > self.height - 1 {
-                    panic!(
-                        "Player with strategy {} moved out of bounds",
-                        player.strategy.get().get_name()
-                    );
-                }
+                assert!(
+                    new_pos.x < self.width && new_pos.y < self.height,
+                    "Player with strategy {} moved out of bounds",
+                    player.strategy.get().get_name()
+                );
 
                 match self.grid[usize::from(new_pos.y)][usize::from(new_pos.x)] {
                     Cell::Empty => {}
                     Cell::Player(id) => {
-                        if id != player.id {
-                            panic!(
-                                "Player with strategy {} tried to move on top of other player",
-                                player.strategy.get().get_name()
-                            );
-                        }
+                        assert!(
+                            id == player.id,
+                            "Player with strategy {} tried to move on top of other player",
+                            player.strategy.get().get_name()
+                        );
                     }
                     Cell::PlayerClaimed(id) => {
-                        if id != player.id {
-                            panic!(
-                                "Player with strategy {} tried to move on territory of other player",
-                                player.strategy.get().get_name()
-                            );
-                        }
+                        assert!(
+                            id == player.id,
+                            "Player with strategy {} tried to move on territory of other player",
+                            player.strategy.get().get_name()
+                        );
                     }
                 }
 
@@ -207,7 +204,7 @@ impl Game {
     }
 }
 
-fn capture_enclosed(grid: &mut Vec<Vec<Cell>>, player_id: u8) {
+fn capture_enclosed(grid: &mut [Vec<Cell>], player_id: u8) {
     let height = grid.len();
     let width = grid[0].len();
 
@@ -261,8 +258,8 @@ fn capture_enclosed(grid: &mut Vec<Vec<Cell>>, player_id: u8) {
 }
 
 fn enqueue_if_open<F>(
-    grid: &Vec<Vec<Cell>>,
-    visited: &mut Vec<Vec<bool>>,
+    grid: &[Vec<Cell>],
+    visited: &mut [Vec<bool>],
     queue: &mut VecDeque<(usize, usize)>,
     x: usize,
     y: usize,
