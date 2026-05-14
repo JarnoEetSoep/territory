@@ -307,7 +307,7 @@ impl App {
                 let cell = game.get_cell_at(x, y);
 
                 let mut fill_color = match cell {
-                    Cell::Empty => Color32::WHITE,
+                    Cell::Empty => Color32::GRAY.gamma_multiply(0.2),
                     Cell::Player(id) | Cell::PlayerClaimed(id) => {
                         let rgb = self
                             .state
@@ -338,7 +338,7 @@ impl App {
                     Rect::from_center_size(center, Vec2::new(cell_size, cell_size)),
                     0.0,
                     fill_color,
-                    Stroke::new(1.0, Color32::GRAY),
+                    Stroke::new(1.0, Color32::GRAY.gamma_multiply(0.5)),
                     StrokeKind::Middle,
                 );
             }
@@ -349,6 +349,7 @@ impl App {
         Window::new("Stats").resizable(false).show(ui.ctx(), |ui| {
             TableBuilder::new(ui)
                 .id_salt("stats")
+                .striped(true)
                 .column(Column::auto())
                 .column(Column::auto())
                 .column(Column::auto())

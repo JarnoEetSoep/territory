@@ -100,6 +100,7 @@ impl SettingsPanel {
 
         TableBuilder::new(ui)
             .id_salt("players_settings")
+            .striped(true)
             .column(Column::auto())
             .column(Column::auto())
             .column(Column::auto())
