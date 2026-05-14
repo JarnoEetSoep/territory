@@ -7,7 +7,6 @@ use crate::{
     strategies::Strategies,
 };
 
-#[derive(Debug)]
 pub struct PlayerSettings {
     pub id: u8,
     pub color: [u8; 3],
@@ -18,12 +17,38 @@ pub struct PlayerSettings {
     pub enabled: bool,
 }
 
-#[derive(Default)]
+impl Default for PlayerSettings {
+    fn default() -> Self {
+        Self {
+            id: 0,
+            color: [255, 255, 255],
+            name: "New player".to_owned(),
+            strategy: Strategies::DoNothingStrategy,
+            x: 0,
+            y: 0,
+            enabled: false,
+        }
+    }
+}
+
 pub struct SettingsPanel {
     pub open: bool,
     pub width: u16,
     pub height: u16,
+    pub border_thickness: f32,
     pub players_settings: Vec<PlayerSettings>,
+}
+
+impl Default for SettingsPanel {
+    fn default() -> Self {
+        Self {
+            open: true,
+            width: 50,
+            height: 50,
+            border_thickness: 1.0,
+            players_settings: Vec::new(),
+        }
+    }
 }
 
 #[derive(Default)]
@@ -79,6 +104,20 @@ impl SettingsPanel {
                         if ui.add(Button::new("Apply")).clicked() {
                             *cmd = Command::ApplyGridSize;
                         }
+                    });
+                });
+
+                body.row(20.0, |mut row| {
+                    row.col(|ui| {
+                        ui.label("Cell border thickness:");
+                    });
+
+                    row.col(|ui| {
+                        ui.add(
+                            DragValue::new(&mut self.border_thickness)
+                                .speed(0.05)
+                                .range(0..=2),
+                        );
                     });
                 });
 
@@ -199,12 +238,10 @@ impl SettingsPanel {
                         None => {
                             self.players_settings.push(PlayerSettings {
                                 id: player.id,
-                                color: [255, 255, 255],
-                                name: "New player".to_owned(),
-                                strategy: player.strategy,
                                 x: player.position.unwrap_or(Pos::ZERO).x,
                                 y: player.position.unwrap_or(Pos::ZERO).y,
                                 enabled: player.position.is_some(),
+                                ..Default::default()
                             });
                         }
                     }

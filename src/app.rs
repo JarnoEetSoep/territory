@@ -11,8 +11,8 @@ use std::{
 };
 
 use egui::{
-    CentralPanel, Color32, MenuBar, Panel, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, Ui,
-    Vec2, Window, widgets,
+    Align2, CentralPanel, Color32, MenuBar, Panel, Pos2, Rect, RichText, Sense, Stroke, StrokeKind,
+    Ui, Vec2, Window, widgets,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use egui::{Key, Modifiers};
@@ -343,7 +343,7 @@ impl App {
                     Rect::from_center_size(center, Vec2::new(cell_size, cell_size)),
                     0.0,
                     fill_color,
-                    Stroke::new(1.0, Color32::GRAY.gamma_multiply(0.5)),
+                    Stroke::new(self.state.settings_panel.border_thickness, Color32::GRAY),
                     StrokeKind::Middle,
                 );
             }
@@ -351,45 +351,52 @@ impl App {
     }
 
     fn stats_window(&self, ui: &Ui, _frame: &mut eframe::Frame) {
-        Window::new("Stats").resizable(false).show(ui.ctx(), |ui| {
-            TableBuilder::new(ui)
-                .id_salt("stats")
-                .striped(true)
-                .column(Column::auto())
-                .column(Column::auto())
-                .column(Column::auto())
-                .body(|mut body| {
-                    let total = u32::from(self.state.settings_panel.width)
-                        * u32::from(self.state.settings_panel.height);
+        Window::new("Stats")
+            .resizable(false)
+            .anchor(Align2::LEFT_BOTTOM, Vec2::ZERO)
+            .show(ui.ctx(), |ui| {
+                TableBuilder::new(ui)
+                    .id_salt("stats")
+                    .striped(true)
+                    .column(Column::auto())
+                    .column(Column::auto())
+                    .column(Column::auto())
+                    .body(|mut body| {
+                        let total = u32::from(self.state.settings_panel.width)
+                            * u32::from(self.state.settings_panel.height);
 
-                    for settings in &self.state.settings_panel.players_settings {
-                        if settings.enabled {
-                            body.row(20.0, |mut row| {
-                                row.col(|ui| {
-                                    let (r, g, b) =
-                                        (settings.color[0], settings.color[1], settings.color[2]);
-                                    ui.colored_label(Color32::from_rgb(r, g, b), "⬛");
-                                });
+                        for settings in &self.state.settings_panel.players_settings {
+                            if settings.enabled {
+                                body.row(20.0, |mut row| {
+                                    row.col(|ui| {
+                                        let (r, g, b) = (
+                                            settings.color[0],
+                                            settings.color[1],
+                                            settings.color[2],
+                                        );
+                                        ui.colored_label(Color32::from_rgb(r, g, b), "⬛");
+                                    });
 
-                                row.col(|ui| {
-                                    ui.horizontal(|ui| {
-                                        ui.label(format!("{}:", settings.name));
+                                    row.col(|ui| {
+                                        ui.horizontal(|ui| {
+                                            ui.label(format!("{}:", settings.name));
+                                        });
+                                    });
+
+                                    row.col(|ui| {
+                                        ui.horizontal(|ui| {
+                                            let taken =
+                                                self.state.bins.get(&settings.id).unwrap_or(&0);
+                                            ui.label(format!(
+                                                "{:.2}%",
+                                                f64::from(*taken) / f64::from(total) * 100.
+                                            ));
+                                        });
                                     });
                                 });
-
-                                row.col(|ui| {
-                                    ui.horizontal(|ui| {
-                                        let taken = self.state.bins.get(&settings.id).unwrap_or(&0);
-                                        ui.label(format!(
-                                            "{:.2}%",
-                                            f64::from(*taken) / f64::from(total) * 100.
-                                        ));
-                                    });
-                                });
-                            });
+                            }
                         }
-                    }
-                });
-        });
+                    });
+            });
     }
 }
