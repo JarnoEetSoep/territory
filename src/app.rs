@@ -173,8 +173,11 @@ impl eframe::App for App {
                     .add_player();
             }
             Command::RemovePlayer(id) => {
-                self.state.settings_panel.players_settings.retain(|player| player.id != id);
-                
+                self.state
+                    .settings_panel
+                    .players_settings
+                    .retain(|player| player.id != id);
+
                 self.state
                     .game
                     .lock()

@@ -52,10 +52,10 @@ impl Strategy for PrioritiseEmptyStrategy {
             }
         }
 
-        if priority_dirs.len() > 0 {
+        if !priority_dirs.is_empty() {
             return priority_dirs[fastrand::usize(..priority_dirs.len())];
         }
 
-        possible_dirs[fastrand::usize(..possible_dirs.len())]        
+        possible_dirs[fastrand::usize(..possible_dirs.len())]
     }
 }
