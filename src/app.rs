@@ -37,7 +37,7 @@ pub struct AppState {
     game_thread: Option<JoinHandle<()>>,
     #[cfg(not(target_arch = "wasm32"))]
     tx: Sender<ThreadMessage>,
-    bins: HashMap<u8, u32>,
+    claimed_amount: HashMap<u8, u32>,
 }
 
 pub struct App {
@@ -95,7 +95,7 @@ impl App {
                 game_thread: Some(handle),
                 #[cfg(not(target_arch = "wasm32"))]
                 tx,
-                bins: HashMap::new(),
+                claimed_amount: HashMap::new(),
             },
         }
     }
@@ -278,7 +278,7 @@ impl App {
     fn game_panel(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::click());
 
-        self.state.bins.clear();
+        self.state.claimed_amount.clear();
 
         let game = self
             .state
@@ -292,21 +292,21 @@ impl App {
         let mut offset_y = 0.;
         let cell_size;
 
-        if response.rect.aspect_ratio() * f32::from(height) > f32::from(width) {
-            cell_size = response.rect.height() / f32::from(height);
+        if response.rect.aspect_ratio() * height as f32 > width as f32 {
+            cell_size = response.rect.height() / height as f32;
 
-            offset_x = 0.5 * (response.rect.width() - cell_size * f32::from(width));
+            offset_x = 0.5 * (response.rect.width() - cell_size * width as f32);
         } else {
-            cell_size = response.rect.width() / f32::from(width);
+            cell_size = response.rect.width() / width as f32;
 
-            offset_y = 0.5 * (response.rect.height() - cell_size * f32::from(height));
+            offset_y = 0.5 * (response.rect.height() - cell_size * height as f32);
         }
 
         for y in 0..height {
             for x in 0..width {
                 let center = Pos2::new(
-                    response.rect.left() + offset_x + (f32::from(x) + 0.5) * cell_size,
-                    response.rect.top() + offset_y + (f32::from(y) + 0.5) * cell_size,
+                    response.rect.left() + offset_x + (x as f32 + 0.5) * cell_size,
+                    response.rect.top() + offset_y + (y as f32 + 0.5) * cell_size,
                 );
 
                 let cell = game.get_cell_at(x, y);
@@ -334,8 +334,8 @@ impl App {
                 match cell {
                     Cell::Empty => {}
                     Cell::Player(id) | Cell::PlayerClaimed(id) => {
-                        let value = self.state.bins.get(id).unwrap_or(&0) + 1;
-                        self.state.bins.insert(*id, value);
+                        let value = self.state.claimed_amount.get(id).unwrap_or(&0) + 1;
+                        self.state.claimed_amount.insert(*id, value);
                     }
                 }
 
@@ -353,7 +353,8 @@ impl App {
     fn stats_window(&self, ui: &Ui, _frame: &mut eframe::Frame) {
         Window::new("Stats")
             .resizable(false)
-            .anchor(Align2::LEFT_BOTTOM, Vec2::ZERO)
+            .pivot(Align2::LEFT_BOTTOM)
+            .default_pos([0., ui.ctx().viewport_rect().height()])
             .show(ui.ctx(), |ui| {
                 TableBuilder::new(ui)
                     .id_salt("stats")
@@ -362,8 +363,8 @@ impl App {
                     .column(Column::auto())
                     .column(Column::auto())
                     .body(|mut body| {
-                        let total = u32::from(self.state.settings_panel.width)
-                            * u32::from(self.state.settings_panel.height);
+                        let total =
+                            self.state.settings_panel.width * self.state.settings_panel.height;
 
                         for settings in &self.state.settings_panel.players_settings {
                             if settings.enabled {
@@ -385,11 +386,14 @@ impl App {
 
                                     row.col(|ui| {
                                         ui.horizontal(|ui| {
-                                            let taken =
-                                                self.state.bins.get(&settings.id).unwrap_or(&0);
+                                            let taken = self
+                                                .state
+                                                .claimed_amount
+                                                .get(&settings.id)
+                                                .unwrap_or(&0);
                                             ui.label(format!(
                                                 "{:.2}%",
-                                                f64::from(*taken) / f64::from(total) * 100.
+                                                *taken as f32 / total as f32 * 100.
                                             ));
                                         });
                                     });

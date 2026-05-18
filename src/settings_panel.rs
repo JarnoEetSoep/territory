@@ -12,8 +12,8 @@ pub struct PlayerSettings {
     pub color: [u8; 3],
     pub name: String,
     pub strategy: Strategies,
-    pub x: u16,
-    pub y: u16,
+    pub x: usize,
+    pub y: usize,
     pub enabled: bool,
 }
 
@@ -33,8 +33,8 @@ impl Default for PlayerSettings {
 
 pub struct SettingsPanel {
     pub open: bool,
-    pub width: u16,
-    pub height: u16,
+    pub width: usize,
+    pub height: usize,
     pub border_thickness: f32,
     pub players_settings: Vec<PlayerSettings>,
 }
@@ -59,7 +59,7 @@ pub enum Command {
     AddPlayer,
     RemovePlayer(u8),
     SetStrategy(u8, Strategies),
-    MovePlayer(u8, u16, u16),
+    MovePlayer(u8, usize, usize),
     DisablePlayer(u8),
 }
 

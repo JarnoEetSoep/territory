@@ -10,7 +10,7 @@ impl Strategy for DoNothingStrategy {
         "Do nothing"
     }
 
-    fn step(&self, _grid: &[Vec<Cell>], _pos: Pos, _id: u8) -> Dir {
+    fn step(&self, _grid: &[Cell], _width: usize, _height: usize, _pos: Pos, _id: u8) -> Dir {
         Dir::None
     }
 }

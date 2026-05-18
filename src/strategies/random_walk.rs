@@ -10,7 +10,7 @@ impl Strategy for RandomWalkStrategy {
         "Random walk"
     }
 
-    fn step(&self, grid: &[Vec<Cell>], pos: Pos, id: u8) -> Dir {
+    fn step(&self, grid: &[Cell], width: usize, height: usize, pos: Pos, id: u8) -> Dir {
         let all_dirs = vec![Dir::None, Dir::Up, Dir::Down, Dir::Left, Dir::Right];
         let mut possible_dirs: Vec<Dir> = Vec::new();
 
@@ -23,7 +23,7 @@ impl Strategy for RandomWalkStrategy {
                     }
                 }
                 Dir::Down => {
-                    if usize::from(pos.y) == grid.len() - 1 {
+                    if pos.y == height - 1 {
                         continue;
                     }
                 }
@@ -33,7 +33,7 @@ impl Strategy for RandomWalkStrategy {
                     }
                 }
                 Dir::Right => {
-                    if usize::from(pos.x) == grid[0].len() - 1 {
+                    if pos.x == width - 1 {
                         continue;
                     }
                 }
@@ -41,7 +41,7 @@ impl Strategy for RandomWalkStrategy {
 
             let new_pos = pos + dir;
 
-            match grid[usize::from(new_pos.y)][usize::from(new_pos.x)] {
+            match grid[usize::from(new_pos.y) * usize::from(width) + usize::from(new_pos.x)] {
                 Cell::Empty => possible_dirs.push(dir),
                 Cell::Player(player_id) | Cell::PlayerClaimed(player_id) => {
                     if player_id == id {

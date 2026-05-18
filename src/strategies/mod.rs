@@ -8,7 +8,7 @@ mod random_walk;
 pub trait Strategy {
     fn get_name(&self) -> &'static str;
 
-    fn step(&self, grid: &[Vec<Cell>], pos: Pos, id: u8) -> Dir;
+    fn step(&self, grid: &[Cell], width: usize, height: usize, pos: Pos, id: u8) -> Dir;
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
