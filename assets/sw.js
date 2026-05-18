@@ -1,4 +1,4 @@
-var cacheName = 'egui-template-pwa';
+var cacheName = 'territory';
 var filesToCache = [
   './',
   './index.html',

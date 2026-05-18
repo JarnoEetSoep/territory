@@ -99,11 +99,9 @@ impl Game {
                     player.strategy.get().get_name()
                 );
 
-                let mut calculate_enclosed = false;
-
                 match self.grid[new_pos.y * self.width + new_pos.x] {
                     Cell::Empty => {
-                        calculate_enclosed = true;
+                        fill_enclosed_areas_players.push(player.id);
                     }
                     Cell::Player(id) => {
                         assert!(
@@ -124,10 +122,6 @@ impl Game {
                 self.grid[pos.y * self.width + pos.x] = Cell::PlayerClaimed(player.id);
                 self.grid[new_pos.y * self.width + new_pos.x] = Cell::Player(player.id);
                 player.position = Some(new_pos);
-
-                if calculate_enclosed {
-                    fill_enclosed_areas_players.push(player.id);
-                }
             }
         }
 
