@@ -103,8 +103,12 @@ impl Game {
                     player.strategy.get().get_name()
                 );
 
+                let mut calculate_enclosed = false;
+
                 match self.grid[new_pos.y * self.width + new_pos.x] {
-                    Cell::Empty => {}
+                    Cell::Empty => {
+                        calculate_enclosed = true;
+                    }
                     Cell::Player(id) => {
                         assert!(
                             id == player.id,
@@ -125,7 +129,9 @@ impl Game {
                 self.grid[new_pos.y * self.width + new_pos.x] = Cell::Player(player.id);
                 player.position = Some(new_pos);
 
-                capture_enclosed(&mut self.grid, self.width, self.height, player.id);
+                if calculate_enclosed {
+                    fill_unreachable_areas(&mut self.grid, self.width, self.height, player.id);
+                }
             }
         }
     }
@@ -205,83 +211,62 @@ impl Game {
     }
 }
 
-fn capture_enclosed(grid: &mut [Cell], width: usize, height: usize, player_id: u8) {
-    let mut visited = vec![false; width * height];
+fn fill_unreachable_areas(grid: &mut [Cell], width: usize, height: usize, owner: u8) {
+    let mut reachable = vec![false; grid.len()];
     let mut queue = VecDeque::new();
 
-    let is_wall = |cell: Cell, _x: usize, _y: usize| {
-        matches!(
-            cell,
-            Cell::Player(id) | Cell::PlayerClaimed(id)
-                if id == player_id
-        )
-    };
-
-    for x in 0..width {
-        enqueue_if_open(grid, &mut visited, &mut queue, x, 0, width, &is_wall);
-        enqueue_if_open(
-            grid,
-            &mut visited,
-            &mut queue,
-            x,
-            height - 1,
-            width,
-            &is_wall,
-        );
-    }
-
-    for y in 0..height {
-        enqueue_if_open(grid, &mut visited, &mut queue, 0, y, width, &is_wall);
-        enqueue_if_open(
-            grid,
-            &mut visited,
-            &mut queue,
-            width - 1,
-            y,
-            width,
-            &is_wall,
-        );
-    }
-
-    // BFS flood-fill
-    while let Some((x, y)) = queue.pop_front() {
-        let neighbors = [
-            (x.wrapping_sub(1), y),
-            (x + 1, y),
-            (x, y.wrapping_sub(1)),
-            (x, y + 1),
-        ];
-
-        for (nx, ny) in neighbors {
-            if nx < width && ny < height {
-                enqueue_if_open(grid, &mut visited, &mut queue, nx, ny, width, &is_wall);
-            }
-        }
-    }
-
-    // Any unvisited non-wall cell is enclosed
     for y in 0..height {
         for x in 0..width {
-            if !visited[y * width + x] && !is_wall(grid[y * width + x], x, y) {
-                grid[y * width + x] = Cell::PlayerClaimed(player_id);
+            match grid[y * width + x] {
+                Cell::Player(id) if id != owner => {
+                    reachable[y * width + x] = true;
+                    queue.push_back((x, y));
+                }
+                _ => {}
             }
         }
     }
-}
 
-fn enqueue_if_open<F>(
-    grid: &[Cell],
-    visited: &mut [bool],
-    queue: &mut VecDeque<(usize, usize)>,
-    x: usize,
-    y: usize,
-    width: usize,
-    is_wall: &F,
-) where
-    F: Fn(Cell, usize, usize) -> bool,
-{
-    if !visited[y * width + x] && !is_wall(grid[y * width + x], x, y) {
-        visited[y * width + x] = true;
-        queue.push_back((x, y));
+    while let Some((x, y)) = queue.pop_front() {
+        let mut neighbours = Vec::new();
+
+        if x > 0 {
+            neighbours.push((x - 1, y));
+        }
+
+        if x < width - 1 {
+            neighbours.push((x + 1, y));
+        }
+
+        if y > 0 {
+            neighbours.push((x, y - 1));
+        }
+
+        if y < height - 1 {
+            neighbours.push((x, y + 1));
+        }
+
+        for (nx, ny) in neighbours {
+            if reachable[ny * width + nx] {
+                continue;
+            }
+
+            let traversable = match grid[ny * width + nx] {
+                Cell::Empty => true,
+                Cell::PlayerClaimed(id) if id != owner => true,
+                _ => false,
+            };
+
+            if traversable {
+                reachable[ny * width + nx] = true;
+                queue.push_back((nx, ny));
+            }
+        }
+    }
+
+    for idx in 0..grid.len() {
+        if !reachable[idx] && matches!(grid[idx], Cell::Empty) {
+            grid[idx] = Cell::PlayerClaimed(owner);
+        }
     }
 }
