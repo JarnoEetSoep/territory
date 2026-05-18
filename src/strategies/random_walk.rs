@@ -41,7 +41,7 @@ impl Strategy for RandomWalkStrategy {
 
             let new_pos = pos + dir;
 
-            match grid[usize::from(new_pos.y) * usize::from(width) + usize::from(new_pos.x)] {
+            match grid[new_pos.y * width + new_pos.x] {
                 Cell::Empty => possible_dirs.push(dir),
                 Cell::Player(player_id) | Cell::PlayerClaimed(player_id) => {
                     if player_id == id {
