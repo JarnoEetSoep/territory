@@ -13,29 +13,29 @@ pub trait Strategy {
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Default)]
 pub enum Strategies {
-    RandomWalkStrategy,
     #[default]
     DoNothingStrategy,
-    PathfindToEmptyStrategy,
+    RandomWalkStrategy,
     PrioritiseEmptyStrategy,
+    PathfindToEmptyStrategy,
 }
 
 impl Strategies {
     pub fn list_strategies() -> Vec<Self> {
         vec![
-            Self::RandomWalkStrategy,
             Self::DoNothingStrategy,
-            Self::PathfindToEmptyStrategy,
+            Self::RandomWalkStrategy,
             Self::PrioritiseEmptyStrategy,
+            Self::PathfindToEmptyStrategy,
         ]
     }
 
     pub fn get(&self) -> Box<dyn Strategy> {
         match self {
-            Self::RandomWalkStrategy => Box::new(random_walk::RandomWalkStrategy),
             Self::DoNothingStrategy => Box::new(do_nothing::DoNothingStrategy),
-            Self::PathfindToEmptyStrategy => Box::new(pathfind_to_empty::PathfindToEmptyStrategy),
+            Self::RandomWalkStrategy => Box::new(random_walk::RandomWalkStrategy),
             Self::PrioritiseEmptyStrategy => Box::new(prioritise_empty::PrioritiseEmptyStrategy),
+            Self::PathfindToEmptyStrategy => Box::new(pathfind_to_empty::PathfindToEmptyStrategy),
         }
     }
 }
