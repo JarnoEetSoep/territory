@@ -250,6 +250,16 @@ impl App {
 
         ui.separator();
 
+        if ui.button("Reset").clicked() {
+            self.state
+                .game
+                .lock()
+                .expect("Error while acquiring lock on game mutex")
+                .reset(&self.state.settings_panel.players_settings);
+        }
+
+        ui.separator();
+
         let content = match (self.state.running, ui.visuals().dark_mode) {
             (true, true) => RichText::new("⏸").color(Color32::LIGHT_RED),
             (false, true) => RichText::new("▶").color(Color32::LIGHT_GREEN),
