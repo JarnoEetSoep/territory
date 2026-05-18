@@ -202,7 +202,7 @@ impl Game {
 
         self.players.push(Player {
             id: self.last_id,
-            strategy: Strategies::RandomWalkStrategy,
+            strategy: Strategies::default(),
             position: None,
         });
 

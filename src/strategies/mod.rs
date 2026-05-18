@@ -11,9 +11,10 @@ pub trait Strategy {
     fn step(&self, grid: &[Cell], width: usize, height: usize, pos: Pos, id: u8) -> Dir;
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Default)]
 pub enum Strategies {
     RandomWalkStrategy,
+    #[default]
     DoNothingStrategy,
     PathfindToEmptyStrategy,
     PrioritiseEmptyStrategy,

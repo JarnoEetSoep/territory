@@ -23,7 +23,7 @@ impl Default for PlayerSettings {
             id: 0,
             color: [255, 255, 255],
             name: "New player".to_owned(),
-            strategy: Strategies::DoNothingStrategy,
+            strategy: Strategies::default(),
             x: 0,
             y: 0,
             enabled: false,
