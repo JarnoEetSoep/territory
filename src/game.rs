@@ -8,13 +8,36 @@ pub struct Pos {
     pub y: usize,
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Default)]
 pub enum Dir {
+    #[default]
     None,
     Up,
     Down,
     Left,
     Right,
+}
+
+impl Dir {
+    pub fn right(&self) -> Self {
+        match self {
+            Self::None => Self::None,
+            Self::Up => Self::Right,
+            Self::Down => Self::Left,
+            Self::Left => Self::Up,
+            Self::Right => Self::Down,
+        }
+    }
+
+    pub fn left(&self) -> Self {
+        match self {
+            Self::None => Self::None,
+            Self::Up => Self::Left,
+            Self::Down => Self::Right,
+            Self::Left => Self::Down,
+            Self::Right => Self::Up,
+        }
+    }
 }
 
 impl Add<Dir> for Pos {
@@ -47,11 +70,46 @@ impl Pos {
     pub const ZERO: Self = Self { x: 0, y: 0 };
 }
 
+#[derive(Debug, Default)]
+pub struct Brain {
+    pub strategy: Strategies,
+    pub facing: Dir,
+}
+
 #[derive(Debug)]
 pub struct Player {
     pub id: u8,
-    pub strategy: Strategies,
     pub position: Option<Pos>,
+    pub brain: Brain,
+}
+
+impl Player {
+    pub fn can_move(&self, grid: &[Cell], dir: Dir, width: usize, height: usize) -> bool {
+        match self.position {
+            Some(pos) => {
+                if pos.x == 0 && matches!(dir, Dir::Left)
+                    || pos.x == width - 1 && matches!(dir, Dir::Right)
+                    || pos.y == 0 && matches!(dir, Dir::Up)
+                    || pos.y == height - 1 && matches!(dir, Dir::Down)
+                {
+                    return false;
+                }
+
+                let new_pos = pos + dir;
+
+                match grid[new_pos.y * width + new_pos.x] {
+                    Cell::Empty => true,
+                    Cell::Player(player_id) | Cell::PlayerClaimed(player_id)
+                        if player_id == self.id =>
+                    {
+                        true
+                    }
+                    _ => false,
+                }
+            }
+            None => false,
+        }
+    }
 }
 
 #[derive(Default, Clone, Copy)]
@@ -88,15 +146,16 @@ impl Game {
             if let Some(pos) = player.position {
                 let dir =
                     player
+                        .brain
                         .strategy
                         .get()
-                        .step(&self.grid, self.width, self.height, pos, player.id);
+                        .step(&self.grid, player, self.width, self.height);
                 let new_pos = pos + dir;
 
                 assert!(
                     new_pos.x < self.width && new_pos.y < self.height,
                     "Player with strategy {} moved out of bounds",
-                    player.strategy.get().get_name()
+                    player.brain.strategy.get().get_name()
                 );
 
                 match self.grid[new_pos.y * self.width + new_pos.x] {
@@ -107,14 +166,14 @@ impl Game {
                         assert!(
                             id == player.id,
                             "Player with strategy {} tried to move on top of other player",
-                            player.strategy.get().get_name()
+                            player.brain.strategy.get().get_name()
                         );
                     }
                     Cell::PlayerClaimed(id) => {
                         assert!(
                             id == player.id,
                             "Player with strategy {} tried to move on territory of other player",
-                            player.strategy.get().get_name()
+                            player.brain.strategy.get().get_name()
                         );
                     }
                 }
@@ -137,6 +196,25 @@ impl Game {
             self.grid.push(Cell::Empty);
         }
 
+        for player in &mut self.players {
+            player.brain = Brain::default();
+
+            if let Some(pos) = player.position {
+                let settings = players
+                    .iter()
+                    .find(|p| p.id == player.id)
+                    .expect("No settings found for player");
+
+                self.grid[pos.y * self.width + pos.x] = Cell::Empty;
+
+                player.position = Some(Pos {
+                    x: settings.x,
+                    y: settings.y,
+                });
+                self.grid[settings.y * self.width + settings.x] = Cell::Player(player.id);
+            }
+        }
+
         for player in players {
             if player.enabled {
                 self.move_player_to(player.x, player.y, player.id);
@@ -147,7 +225,7 @@ impl Game {
     pub fn set_player_strategy(&mut self, id: u8, strategy: Strategies) {
         for player in &mut self.players {
             if player.id == id {
-                player.strategy = strategy;
+                player.brain.strategy = strategy;
             }
         }
     }
@@ -196,8 +274,8 @@ impl Game {
 
         self.players.push(Player {
             id: self.last_id,
-            strategy: Strategies::default(),
             position: None,
+            brain: Brain::default(),
         });
 
         self.last_id

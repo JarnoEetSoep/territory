@@ -1,5 +1,5 @@
 use crate::{
-    game::{Cell, Dir, Pos},
+    game::{Cell, Dir, Player},
     strategies::Strategy,
 };
 
@@ -10,45 +10,27 @@ impl Strategy for PrioritiseEmptyStrategy {
         "Prioritise empty"
     }
 
-    fn step(&self, grid: &[Cell], width: usize, height: usize, pos: Pos, id: u8) -> Dir {
+    fn step(&self, grid: &[Cell], player: &mut Player, width: usize, height: usize) -> Dir {
         let all_dirs = vec![Dir::None, Dir::Up, Dir::Down, Dir::Left, Dir::Right];
         let mut possible_dirs: Vec<Dir> = Vec::new();
         let mut priority_dirs: Vec<Dir> = Vec::new();
+        let pos = player.position.expect("Player doesn't have a position");
 
         for dir in all_dirs {
-            match dir {
-                Dir::None => {}
-                Dir::Up => {
-                    if pos.y == 0 {
-                        continue;
-                    }
-                }
-                Dir::Down => {
-                    if pos.y == height - 1 {
-                        continue;
-                    }
-                }
-                Dir::Left => {
-                    if pos.x == 0 {
-                        continue;
-                    }
-                }
-                Dir::Right => {
-                    if pos.x == width - 1 {
-                        continue;
-                    }
-                }
+            if !player.can_move(grid, dir, width, height) {
+                continue;
             }
 
             let new_pos = pos + dir;
 
             match grid[new_pos.y * width + new_pos.x] {
                 Cell::Empty => priority_dirs.push(dir),
-                Cell::Player(player_id) | Cell::PlayerClaimed(player_id) => {
-                    if player_id == id {
-                        possible_dirs.push(dir);
-                    }
+                Cell::Player(player_id) | Cell::PlayerClaimed(player_id)
+                    if player_id == player.id =>
+                {
+                    possible_dirs.push(dir);
                 }
+                _ => {}
             }
         }
 

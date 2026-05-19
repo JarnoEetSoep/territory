@@ -1,5 +1,5 @@
 use crate::{
-    game::{Cell, Dir, Pos},
+    game::{Cell, Dir, Player},
     strategies::Strategy,
 };
 
@@ -10,7 +10,7 @@ impl Strategy for PathfindToEmptyStrategy {
         "Pathfind to empty"
     }
 
-    fn step(&self, _grid: &[Cell], _width: usize, _height: usize, _pos: Pos, _id: u8) -> Dir {
+    fn step(&self, _grid: &[Cell], _player: &mut Player, _width: usize, _height: usize) -> Dir {
         Dir::None
     }
 }
