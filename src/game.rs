@@ -215,7 +215,10 @@ impl Game {
         }
 
         for player in &mut self.players {
-            player.brain = Brain::default();
+            player.brain = Brain {
+                strategy: Arc::clone(&player.brain.strategy),
+                ..Default::default()
+            };
 
             if let Some(pos) = player.position {
                 let settings = players
