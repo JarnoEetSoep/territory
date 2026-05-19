@@ -21,6 +21,7 @@ use egui_extras::{Column, TableBuilder};
 use crate::{
     game::{Cell, Game},
     settings_panel::{Command, SettingsPanel},
+    strategies::STRATEGIES,
 };
 
 pub enum ThreadMessage {
@@ -189,7 +190,10 @@ impl eframe::App for App {
                     .game
                     .lock()
                     .expect("Error while acquiring lock on game mutex")
-                    .set_player_strategy(id, strategy);
+                    .set_player_strategy(
+                        id,
+                        STRATEGIES.get(&strategy).expect("Strategy not found"),
+                    );
             }
             Command::MovePlayer(id, x, y) => {
                 self.state

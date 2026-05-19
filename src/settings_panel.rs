@@ -4,14 +4,14 @@ use egui_extras::{Column, TableBuilder};
 
 use crate::{
     game::{Player, Pos},
-    strategies::Strategies,
+    strategies::STRATEGIES,
 };
 
 pub struct PlayerSettings {
     pub id: u8,
     pub color: [u8; 3],
     pub name: String,
-    pub strategy: Strategies,
+    pub strategy: u8,
     pub x: usize,
     pub y: usize,
     pub enabled: bool,
@@ -23,7 +23,7 @@ impl Default for PlayerSettings {
             id: 0,
             color: [255, 255, 255],
             name: "New player".to_owned(),
-            strategy: Strategies::default(),
+            strategy: 0,
             x: 0,
             y: 0,
             enabled: false,
@@ -58,7 +58,7 @@ pub enum Command {
     ApplyGridSize,
     AddPlayer,
     RemovePlayer(u8),
-    SetStrategy(u8, Strategies),
+    SetStrategy(u8, u8),
     MovePlayer(u8, usize, usize),
     DisablePlayer(u8),
 }
@@ -178,13 +178,23 @@ impl SettingsPanel {
                                         "player_{}_strategy_selector",
                                         settings.id
                                     ))
-                                    .selected_text(settings.strategy.get().get_name())
+                                    .selected_text(
+                                        STRATEGIES
+                                            .get(&settings.strategy)
+                                            .expect("Strategy not found")
+                                            .get_name(),
+                                    )
                                     .show_ui(ui, |ui| {
-                                        for strategy in Strategies::list_strategies() {
+                                        let mut strategy_ids =
+                                            STRATEGIES.keys().clone().collect::<Vec<&u8>>();
+
+                                        strategy_ids.sort();
+
+                                        for strategy_id in strategy_ids {
                                             ui.selectable_value(
                                                 &mut settings.strategy,
-                                                strategy,
-                                                strategy.get().get_name(),
+                                                *strategy_id,
+                                                STRATEGIES[strategy_id].get_name(),
                                             );
                                         }
                                     });

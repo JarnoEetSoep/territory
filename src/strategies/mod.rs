@@ -1,3 +1,9 @@
+use std::{
+    collections::HashMap,
+    fmt::Debug,
+    sync::{Arc, LazyLock},
+};
+
 use crate::game::{Cell, Dir, Player};
 
 mod do_nothing;
@@ -6,40 +12,28 @@ mod prioritise_empty;
 mod random_walk;
 mod spiral;
 
-pub trait Strategy {
+pub static STRATEGIES: LazyLock<HashMap<u8, Arc<dyn Strategy>>> = LazyLock::new(|| {
+    let mut map: HashMap<u8, Arc<dyn Strategy>> = HashMap::new();
+
+    map.insert(0, Arc::new(do_nothing::DoNothingStrategy));
+    map.insert(1, Arc::new(random_walk::RandomWalkStrategy));
+    map.insert(2, Arc::new(prioritise_empty::PrioritiseEmptyStrategy));
+    map.insert(3, Arc::new(spiral::SpiralStrategy));
+    map.insert(4, Arc::new(pathfind_to_empty::PathfindToEmptyStrategy));
+
+    map
+});
+
+pub trait Strategy: Send + Sync {
     fn get_name(&self) -> &'static str;
 
     fn step(&self, grid: &[Cell], player: &mut Player, width: usize, height: usize) -> Dir;
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Default)]
-pub enum Strategies {
-    #[default]
-    DoNothingStrategy,
-    RandomWalkStrategy,
-    PrioritiseEmptyStrategy,
-    AlwaysRightStrategy,
-    PathfindToEmptyStrategy,
-}
-
-impl Strategies {
-    pub fn list_strategies() -> Vec<Self> {
-        vec![
-            Self::DoNothingStrategy,
-            Self::RandomWalkStrategy,
-            Self::PrioritiseEmptyStrategy,
-            Self::AlwaysRightStrategy,
-            Self::PathfindToEmptyStrategy,
-        ]
-    }
-
-    pub fn get(&self) -> Box<dyn Strategy> {
-        match self {
-            Self::DoNothingStrategy => Box::new(do_nothing::DoNothingStrategy),
-            Self::RandomWalkStrategy => Box::new(random_walk::RandomWalkStrategy),
-            Self::PrioritiseEmptyStrategy => Box::new(prioritise_empty::PrioritiseEmptyStrategy),
-            Self::AlwaysRightStrategy => Box::new(spiral::SpiralStrategy),
-            Self::PathfindToEmptyStrategy => Box::new(pathfind_to_empty::PathfindToEmptyStrategy),
-        }
+impl Debug for dyn Strategy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Strategy")
+            .field(&self.get_name().to_owned())
+            .finish()
     }
 }

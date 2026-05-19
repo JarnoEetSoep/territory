@@ -1,6 +1,9 @@
-use std::{collections::VecDeque, ops::Add};
+use std::{collections::VecDeque, ops::Add, sync::Arc};
 
-use crate::{settings_panel::PlayerSettings, strategies::Strategies};
+use crate::{
+    settings_panel::PlayerSettings,
+    strategies::{STRATEGIES, Strategy},
+};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Pos {
@@ -70,10 +73,19 @@ impl Pos {
     pub const ZERO: Self = Self { x: 0, y: 0 };
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Brain {
-    pub strategy: Strategies,
+    pub strategy: Arc<dyn Strategy>,
     pub facing: Dir,
+}
+
+impl Default for Brain {
+    fn default() -> Self {
+        Self {
+            strategy: Arc::clone(STRATEGIES.get(&0).expect("Strategy not found")),
+            facing: Default::default(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -144,18 +156,18 @@ impl Game {
 
         for player in &mut self.players {
             if let Some(pos) = player.position {
-                let dir =
-                    player
-                        .brain
-                        .strategy
-                        .get()
-                        .step(&self.grid, player, self.width, self.height);
+                let dir = Arc::clone(&player.brain.strategy).step(
+                    &self.grid,
+                    player,
+                    self.width,
+                    self.height,
+                );
                 let new_pos = pos + dir;
 
                 assert!(
                     new_pos.x < self.width && new_pos.y < self.height,
                     "Player with strategy {} moved out of bounds",
-                    player.brain.strategy.get().get_name()
+                    player.brain.strategy.get_name()
                 );
 
                 match self.grid[new_pos.y * self.width + new_pos.x] {
@@ -166,14 +178,14 @@ impl Game {
                         assert!(
                             id == player.id,
                             "Player with strategy {} tried to move on top of other player",
-                            player.brain.strategy.get().get_name()
+                            player.brain.strategy.get_name()
                         );
                     }
                     Cell::PlayerClaimed(id) => {
                         assert!(
                             id == player.id,
                             "Player with strategy {} tried to move on territory of other player",
-                            player.brain.strategy.get().get_name()
+                            player.brain.strategy.get_name()
                         );
                     }
                 }
@@ -222,10 +234,10 @@ impl Game {
         }
     }
 
-    pub fn set_player_strategy(&mut self, id: u8, strategy: Strategies) {
+    pub fn set_player_strategy(&mut self, id: u8, strategy: &Arc<dyn Strategy>) {
         for player in &mut self.players {
             if player.id == id {
-                player.brain.strategy = strategy;
+                player.brain.strategy = Arc::clone(strategy);
             }
         }
     }
