@@ -11,6 +11,15 @@ pub struct Pos {
     pub y: usize,
 }
 
+impl From<(usize, usize)> for Pos {
+    fn from(value: (usize, usize)) -> Self {
+        Self {
+            x: value.0,
+            y: value.1,
+        }
+    }
+}
+
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Default)]
 pub enum Dir {
     #[default]
@@ -39,6 +48,20 @@ impl Dir {
             Self::Down => Self::Right,
             Self::Left => Self::Down,
             Self::Right => Self::Up,
+        }
+    }
+
+    pub fn from_to(from: Pos, to: Pos) -> Self {
+        let dx: isize = to.x.cast_signed() - from.x.cast_signed();
+        let dy: isize = to.y.cast_signed() - from.y.cast_signed();
+
+        match (dx, dy) {
+            (0, 0) => Self::None,
+            (1, 0) => Self::Right,
+            (-1, 0) => Self::Left,
+            (0, 1) => Self::Down,
+            (0, -1) => Self::Up,
+            _ => panic!("From and to are not adjacent"),
         }
     }
 }
@@ -162,32 +185,15 @@ impl Game {
                     self.width,
                     self.height,
                 );
+
+                if !player.can_move(&self.grid, dir, self.width, self.height) {
+                    return;
+                }
+
                 let new_pos = pos + dir;
 
-                assert!(
-                    new_pos.x < self.width && new_pos.y < self.height,
-                    "Player with strategy {} moved out of bounds",
-                    player.brain.strategy.get_name()
-                );
-
-                match self.grid[new_pos.y * self.width + new_pos.x] {
-                    Cell::Empty => {
-                        fill_enclosed_areas_players.push(player.id);
-                    }
-                    Cell::Player(id) => {
-                        assert!(
-                            id == player.id,
-                            "Player with strategy {} tried to move on top of other player",
-                            player.brain.strategy.get_name()
-                        );
-                    }
-                    Cell::PlayerClaimed(id) => {
-                        assert!(
-                            id == player.id,
-                            "Player with strategy {} tried to move on territory of other player",
-                            player.brain.strategy.get_name()
-                        );
-                    }
+                if matches!(self.grid[new_pos.y * self.width + new_pos.x], Cell::Empty) {
+                    fill_enclosed_areas_players.push(player.id);
                 }
 
                 self.grid[pos.y * self.width + pos.x] = Cell::PlayerClaimed(player.id);
