@@ -11,33 +11,29 @@ impl Strategy for PrioritiseEmptyStrategy {
     }
 
     fn step(&self, grid: &[Cell], player: &mut Player, width: usize, height: usize) -> Dir {
-        let all_dirs = vec![Dir::None, Dir::Up, Dir::Down, Dir::Left, Dir::Right];
-        let mut possible_dirs: Vec<Dir> = Vec::new();
-        let mut priority_dirs: Vec<Dir> = Vec::new();
         let pos = player.position.expect("Player doesn't have a position");
 
-        for dir in all_dirs {
-            if !player.can_move(grid, dir, width, height) {
-                continue;
-            }
+        let neighbours = pos.neighbours(width, height);
 
-            let new_pos = pos + dir;
+        let priority_dirs = neighbours
+            .iter()
+            .filter(|neighbour| matches!(grid[neighbour.y * width + neighbour.x], Cell::Empty)
+                || matches!(grid[neighbour.y * width + neighbour.x], Cell::Player(player_id) | Cell::PlayerClaimed(player_id)
+                    if player_id == player.id))
+            .map(|neighbour| Dir::from_to(pos, *neighbour));
 
-            match grid[new_pos.y * width + new_pos.x] {
-                Cell::Empty => priority_dirs.push(dir),
-                Cell::Player(player_id) | Cell::PlayerClaimed(player_id)
-                    if player_id == player.id =>
-                {
-                    possible_dirs.push(dir);
-                }
-                _ => {}
-            }
+        if priority_dirs.clone().count() > 0 {
+            return fastrand::choice(priority_dirs.collect::<Vec<Dir>>())
+                .expect("This shouldn't happen");
         }
 
-        if !priority_dirs.is_empty() {
-            return priority_dirs[fastrand::usize(..priority_dirs.len())];
-        }
-
-        possible_dirs[fastrand::usize(..possible_dirs.len())]
+        fastrand::choice(
+            neighbours
+                .into_iter()
+                .map(|neighbour| Dir::from_to(pos, neighbour))
+                .filter(|dir| player.can_move(grid, *dir, width, height))
+                .collect::<Vec<Dir>>(),
+        )
+        .unwrap_or(Dir::None)
     }
 }
