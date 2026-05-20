@@ -17,9 +17,7 @@ impl Strategy for PrioritiseEmptyStrategy {
 
         let priority_dirs = neighbours
             .iter()
-            .filter(|neighbour| matches!(grid[neighbour.y * width + neighbour.x], Cell::Empty)
-                || matches!(grid[neighbour.y * width + neighbour.x], Cell::Player(player_id) | Cell::PlayerClaimed(player_id)
-                    if player_id == player.id))
+            .filter(|neighbour| matches!(grid[neighbour.y * width + neighbour.x], Cell::Empty))
             .map(|neighbour| Dir::from_to(pos, *neighbour));
 
         if priority_dirs.clone().count() > 0 {
