@@ -1,5 +1,5 @@
 #[cfg(not(target_arch = "wasm32"))]
-use core::time;
+use core::time::Duration;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -54,10 +54,7 @@ pub struct App {
 }
 
 impl App {
-    /// Called once before the first frame.
     pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
-        // This is also where you can customize the look and feel of egui using
-        // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
         let game = Arc::<Mutex<Game>>::default();
         let settings_panel = SettingsPanel::default();
 
@@ -88,9 +85,12 @@ impl App {
                     Err(TryRecvError::Disconnected) => break,
                     Err(TryRecvError::Empty) => {
                         if running {
-                            thread::sleep(time::Duration::from_millis(
-                                step_delay.load(Ordering::Relaxed),
-                            ));
+                            let delay = step_delay.load(Ordering::Relaxed);
+
+                            thread::sleep(match delay {
+                                0 => Duration::from_nanos(1),
+                                _ => Duration::from_millis(delay),
+                            });
 
                             game_mutex
                                 .lock()
@@ -122,7 +122,7 @@ impl App {
 }
 
 impl eframe::App for App {
-    /// Called each time the UI needs repainting, which may be many times per second.
+    #[expect(clippy::too_many_lines)]
     fn ui(&mut self, ui: &mut Ui, frame: &mut eframe::Frame) {
         #[cfg(not(target_arch = "wasm32"))]
         if ui.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F11)) {
