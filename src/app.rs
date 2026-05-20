@@ -207,6 +207,10 @@ impl eframe::App for App {
                     .retain(|player| player.id != id);
 
                 self.state
+                    .claimed_amount
+                    .retain(|&player_id, _| player_id != id);
+
+                self.state
                     .game
                     .lock()
                     .expect("Error while acquiring lock on game mutex")
@@ -405,7 +409,22 @@ impl App {
                         let total =
                             self.state.settings_panel.width * self.state.settings_panel.height;
 
-                        for settings in &self.state.settings_panel.players_settings {
+                        let mut values = self
+                            .state
+                            .claimed_amount
+                            .iter()
+                            .collect::<Vec<(&u8, &u32)>>();
+                        values.sort_by(|a, b| b.1.cmp(a.1));
+
+                        for (player_id, taken) in values {
+                            let settings = self
+                                .state
+                                .settings_panel
+                                .players_settings
+                                .iter()
+                                .find(|player| player.id == *player_id)
+                                .expect("Player not found");
+
                             if settings.enabled {
                                 body.row(20.0, |mut row| {
                                     row.col(|ui| {
@@ -425,11 +444,6 @@ impl App {
 
                                     row.col(|ui| {
                                         ui.horizontal(|ui| {
-                                            let taken = self
-                                                .state
-                                                .claimed_amount
-                                                .get(&settings.id)
-                                                .unwrap_or(&0);
                                             ui.label(format!(
                                                 "{:.2}%",
                                                 *taken as f32 / total as f32 * 100.
