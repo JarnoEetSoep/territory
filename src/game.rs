@@ -5,7 +5,7 @@ use crate::{
     strategies::{STRATEGIES, Strategy},
 };
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Pos {
     pub x: usize,
     pub y: usize,
@@ -17,6 +17,30 @@ impl From<(usize, usize)> for Pos {
             x: value.0,
             y: value.1,
         }
+    }
+}
+
+impl Pos {
+    pub fn neighbours(self, width: usize, height: usize) -> Vec<Self> {
+        let mut neighbours_positions = Vec::new();
+
+        if self.x > 0 {
+            neighbours_positions.push(self + Dir::Left);
+        }
+
+        if self.x < width - 1 {
+            neighbours_positions.push(self + Dir::Right);
+        }
+
+        if self.y > 0 {
+            neighbours_positions.push(self + Dir::Up);
+        }
+
+        if self.y < height - 1 {
+            neighbours_positions.push(self + Dir::Down);
+        }
+
+        neighbours_positions
     }
 }
 

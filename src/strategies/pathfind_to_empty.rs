@@ -21,43 +21,25 @@ impl Strategy for PathfindToEmptyStrategy {
         let mut visited = vec![false; grid.len()];
         let mut parent = HashMap::new();
 
-        queue.push_back((pos.x, pos.y));
+        queue.push_back(pos);
         visited[pos.y * width + pos.x] = true;
 
-        while let Some((x, y)) = queue.pop_front()
+        while let Some(pos) = queue.pop_front()
             && target.is_none()
         {
-            let mut neighbours = Vec::new();
-
-            if x > 0 {
-                neighbours.push((x - 1, y));
-            }
-
-            if x < width - 1 {
-                neighbours.push((x + 1, y));
-            }
-
-            if y > 0 {
-                neighbours.push((x, y - 1));
-            }
-
-            if y < height - 1 {
-                neighbours.push((x, y + 1));
-            }
-
-            for (nx, ny) in neighbours {
-                if visited[ny * width + nx] {
+            for neighbour in pos.neighbours(width, height) {
+                if visited[neighbour.y * width + neighbour.x] {
                     continue;
                 }
 
-                parent.insert((nx, ny), (x, y));
+                parent.insert(neighbour, pos);
 
-                match grid[ny * width + nx] {
-                    Cell::Empty => target = Some((nx, ny)),
+                match grid[neighbour.y * width + neighbour.x] {
+                    Cell::Empty => target = Some(neighbour),
                     Cell::PlayerClaimed(id) if id == player.id => {
-                        visited[ny * width + nx] = true;
+                        visited[neighbour.y * width + neighbour.x] = true;
 
-                        queue.push_back((nx, ny));
+                        queue.push_back(neighbour);
                     }
                     _ => {}
                 }
@@ -75,7 +57,7 @@ impl Strategy for PathfindToEmptyStrategy {
 
             path.reverse();
 
-            return Dir::from_to(path[0].into(), path[1].into());
+            return Dir::from_to(path[0], path[1]);
         }
 
         Dir::None

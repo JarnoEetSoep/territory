@@ -8,6 +8,7 @@ use crate::game::{Cell, Dir, Player};
 
 mod do_nothing;
 mod pathfind_to_empty;
+mod pathfind_to_then_prioritise_empty;
 mod prioritise_empty;
 mod random_walk;
 mod spiral;
@@ -20,6 +21,10 @@ pub static STRATEGIES: LazyLock<HashMap<u8, Arc<dyn Strategy>>> = LazyLock::new(
     map.insert(2, Arc::new(prioritise_empty::PrioritiseEmptyStrategy));
     map.insert(3, Arc::new(spiral::SpiralStrategy));
     map.insert(4, Arc::new(pathfind_to_empty::PathfindToEmptyStrategy));
+    map.insert(
+        4,
+        Arc::new(pathfind_to_then_prioritise_empty::PathfindPrioritiseEmptyStrategy),
+    );
 
     map
 });
