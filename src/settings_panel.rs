@@ -1,3 +1,9 @@
+#[cfg(not(target_arch = "wasm32"))]
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
+
 use eframe::Frame;
 use egui::{Button, ComboBox, DragValue, TextEdit, Ui};
 use egui_extras::{Column, TableBuilder};
@@ -37,6 +43,10 @@ pub struct SettingsPanel {
     pub height: usize,
     pub border_thickness: f32,
     pub players_settings: Vec<PlayerSettings>,
+    #[cfg(not(target_arch = "wasm32"))]
+    pub step_delay: Arc<AtomicU64>,
+    #[cfg(target_arch = "wasm32")]
+    pub step_delay: u64,
 }
 
 impl Default for SettingsPanel {
@@ -47,6 +57,10 @@ impl Default for SettingsPanel {
             height: 50,
             border_thickness: 1.0,
             players_settings: Vec::new(),
+            #[cfg(not(target_arch = "wasm32"))]
+            step_delay: Arc::new(AtomicU64::new(50)),
+            #[cfg(target_arch = "wasm32")]
+            step_delay: 50,
         }
     }
 }
@@ -77,6 +91,31 @@ impl SettingsPanel {
             .column(Column::remainder())
             .column(Column::auto())
             .body(|mut body| {
+                body.row(20.0, |mut row| {
+                    row.col(|ui| {
+                        ui.label("Time between steps:");
+                    });
+
+                    row.col(|ui| {
+                        ui.add(
+                            #[cfg(not(target_arch = "wasm32"))]
+                            DragValue::from_get_set(|val| {
+                                if let Some(delay) = val {
+                                    self.step_delay.store(delay as u64, Ordering::Relaxed);
+                                }
+
+                                self.step_delay.load(Ordering::Relaxed) as f64
+                            })
+                            .range(0..=1000)
+                            .suffix("ms"),
+                            #[cfg(target_arch = "wasm32")]
+                            DragValue::new(&mut self.step_delay)
+                                .range(0..=1000)
+                                .suffix("ms"),
+                        );
+                    });
+                });
+
                 body.row(20.0, |mut row| {
                     row.col(|ui| {
                         ui.label("Width:");

@@ -6,9 +6,14 @@ use std::{
 };
 #[cfg(not(target_arch = "wasm32"))]
 use std::{
-    sync::mpsc::{self, Sender, TryRecvError},
+    sync::{
+        atomic::Ordering,
+        mpsc::{self, Sender, TryRecvError},
+    },
     thread::{self, JoinHandle},
 };
+#[cfg(target_arch = "wasm32")]
+use web_time::{Duration, Instant};
 
 use egui::{
     Align2, CentralPanel, Color32, MenuBar, Panel, Pos2, Rect, RichText, Sense, Stroke, StrokeKind,
@@ -24,6 +29,7 @@ use crate::{
     strategies::STRATEGIES,
 };
 
+#[cfg(not(target_arch = "wasm32"))]
 pub enum ThreadMessage {
     Start,
     Stop,
@@ -39,6 +45,8 @@ pub struct AppState {
     #[cfg(not(target_arch = "wasm32"))]
     tx: Sender<ThreadMessage>,
     claimed_amount: HashMap<u8, u32>,
+    #[cfg(target_arch = "wasm32")]
+    last_step_time: Instant,
 }
 
 pub struct App {
@@ -51,6 +59,7 @@ impl App {
         // This is also where you can customize the look and feel of egui using
         // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
         let game = Arc::<Mutex<Game>>::default();
+        let settings_panel = SettingsPanel::default();
 
         #[cfg(not(target_arch = "wasm32"))]
         let (tx, rx) = mpsc::channel::<ThreadMessage>();
@@ -58,6 +67,10 @@ impl App {
         let mut running = false;
         #[cfg(not(target_arch = "wasm32"))]
         let game_mutex = Arc::clone(&game);
+        #[cfg(not(target_arch = "wasm32"))]
+        let step_delay = Arc::clone(&settings_panel.step_delay);
+        #[cfg(not(target_arch = "wasm32"))]
+        let ctx = _cc.egui_ctx.clone();
 
         #[cfg(not(target_arch = "wasm32"))]
         let handle = thread::spawn(move || {
@@ -75,12 +88,16 @@ impl App {
                     Err(TryRecvError::Disconnected) => break,
                     Err(TryRecvError::Empty) => {
                         if running {
-                            thread::sleep(time::Duration::from_millis(50));
+                            thread::sleep(time::Duration::from_millis(
+                                step_delay.load(Ordering::Relaxed),
+                            ));
 
                             game_mutex
                                 .lock()
                                 .expect("Error while acquiring lock on game mutex")
                                 .step();
+
+                            ctx.request_repaint();
                         }
                     }
                 }
@@ -90,13 +107,15 @@ impl App {
         Self {
             state: AppState {
                 running: false,
-                settings_panel: SettingsPanel::default(),
+                settings_panel,
                 game,
                 #[cfg(not(target_arch = "wasm32"))]
                 game_thread: Some(handle),
                 #[cfg(not(target_arch = "wasm32"))]
                 tx,
                 claimed_amount: HashMap::new(),
+                #[cfg(target_arch = "wasm32")]
+                last_step_time: Instant::now(),
             },
         }
     }
@@ -129,11 +148,19 @@ impl eframe::App for App {
 
         #[cfg(target_arch = "wasm32")]
         if self.state.running {
-            self.state
-                .game
-                .lock()
-                .expect("Error while acquiring lock on game mutex")
-                .step();
+            if self.state.last_step_time.elapsed()
+                > Duration::from_millis(self.state.settings_panel.step_delay)
+            {
+                self.state
+                    .game
+                    .lock()
+                    .expect("Error while acquiring lock on game mutex")
+                    .step();
+
+                self.state.last_step_time = Instant::now();
+            }
+
+            ui.ctx().request_repaint();
         }
 
         Panel::top("top_panel").show_inside(ui, |ui| {
@@ -210,8 +237,6 @@ impl eframe::App for App {
                     .disable_player(id);
             }
         }
-
-        ui.ctx().request_repaint_after_secs(0.05);
     }
 }
 
