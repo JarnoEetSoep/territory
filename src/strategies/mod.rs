@@ -7,6 +7,7 @@ use std::{
 use crate::game::{Cell, Dir, Player};
 
 mod do_nothing;
+mod hug_wall;
 mod pathfind_to_empty;
 mod pathfind_to_then_prioritise_empty;
 mod prioritise_empty;
@@ -22,9 +23,10 @@ pub static STRATEGIES: LazyLock<HashMap<u8, Arc<dyn Strategy>>> = LazyLock::new(
     map.insert(3, Arc::new(spiral::SpiralStrategy));
     map.insert(4, Arc::new(pathfind_to_empty::PathfindToEmptyStrategy));
     map.insert(
-        4,
+        5,
         Arc::new(pathfind_to_then_prioritise_empty::PathfindPrioritiseEmptyStrategy),
     );
+    map.insert(6, Arc::new(hug_wall::HugWallStrategy));
 
     map
 });

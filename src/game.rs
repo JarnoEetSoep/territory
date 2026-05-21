@@ -124,6 +124,7 @@ impl Pos {
 pub struct Brain {
     pub strategy: Arc<dyn Strategy>,
     pub facing: Dir,
+    pub memory: Vec<u8>,
 }
 
 impl Default for Brain {
@@ -131,6 +132,7 @@ impl Default for Brain {
         Self {
             strategy: Arc::clone(STRATEGIES.get(&0).expect("Strategy not found")),
             facing: Default::default(),
+            memory: Default::default(),
         }
     }
 }
