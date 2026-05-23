@@ -530,9 +530,10 @@ impl App {
                                 .claimed_amount
                                 .iter()
                                 .collect::<Vec<(&u8, &HashSet<(usize, usize)>)>>();
-                        values.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
 
-                        for (player_id, cells_taken) in values {
+                        values.sort_by_key(|val| val.1.len());
+
+                        for &(player_id, cells_taken) in values.iter().rev() {
                             let settings = self
                                 .state
                                 .settings_panel
