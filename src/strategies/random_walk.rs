@@ -1,5 +1,5 @@
 use crate::{
-    game::{Brain, Cell, Dir, Pos},
+    game::{Brain, Cell, Dir, Pos as _},
     strategies::Strategy,
 };
 
@@ -14,7 +14,7 @@ impl Strategy for RandomWalkStrategy {
         &self,
         grid: &[Cell],
         player_id: u8,
-        pos: Pos,
+        pos: (usize, usize),
         _brain: &mut Brain,
         width: usize,
         height: usize,

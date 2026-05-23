@@ -1,5 +1,5 @@
 use crate::{
-    game::{Brain, Cell, Dir, Pos},
+    game::{Brain, Cell, Dir, Pos as _},
     strategies::Strategy,
 };
 
@@ -14,7 +14,7 @@ impl Strategy for PrioritiseEmptyStrategy {
         &self,
         grid: &[Cell],
         player_id: u8,
-        pos: Pos,
+        pos: (usize, usize),
         _brain: &mut Brain,
         width: usize,
         height: usize,
@@ -23,7 +23,7 @@ impl Strategy for PrioritiseEmptyStrategy {
 
         let priority_dirs = neighbours
             .iter()
-            .filter(|neighbour| matches!(grid[neighbour.y * width + neighbour.x], Cell::Empty))
+            .filter(|neighbour| matches!(grid[neighbour.1 * width + neighbour.0], Cell::Empty))
             .map(|neighbour| Dir::from_to(pos, *neighbour));
 
         if priority_dirs.clone().count() > 0 {

@@ -1,5 +1,5 @@
 use crate::{
-    game::{Brain, Cell, Dir, Pos},
+    game::{Brain, Cell, Dir},
     strategies::Strategy,
 };
 
@@ -14,7 +14,7 @@ impl Strategy for DoNothingStrategy {
         &self,
         _grid: &[Cell],
         _player_id: u8,
-        _pos: Pos,
+        _pos: (usize, usize),
         _brain: &mut Brain,
         _width: usize,
         _height: usize,

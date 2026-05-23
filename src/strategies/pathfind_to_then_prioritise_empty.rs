@@ -1,5 +1,5 @@
 use crate::{
-    game::{Brain, Cell, Dir, Pos},
+    game::{Brain, Cell, Dir, Pos as _},
     strategies::{
         Strategy, pathfind_to_empty::PathfindToEmptyStrategy,
         prioritise_empty::PrioritiseEmptyStrategy,
@@ -17,7 +17,7 @@ impl Strategy for PathfindPrioritiseEmptyStrategy {
         &self,
         grid: &[Cell],
         player_id: u8,
-        pos: Pos,
+        pos: (usize, usize),
         brain: &mut Brain,
         width: usize,
         height: usize,
@@ -25,7 +25,7 @@ impl Strategy for PathfindPrioritiseEmptyStrategy {
         if pos
             .neighbours(width, height)
             .into_iter()
-            .filter(|neighbour| matches!(grid[neighbour.y * width + neighbour.x], Cell::Empty))
+            .filter(|neighbour| matches!(grid[neighbour.1 * width + neighbour.0], Cell::Empty))
             .count()
             > 0
         {

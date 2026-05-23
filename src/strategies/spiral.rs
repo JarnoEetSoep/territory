@@ -1,5 +1,5 @@
 use crate::{
-    game::{Brain, Cell, Dir, Pos},
+    game::{Brain, Cell, Dir, Pos as _},
     strategies::Strategy,
 };
 
@@ -14,7 +14,7 @@ impl Strategy for SpiralStrategy {
         &self,
         grid: &[Cell],
         player_id: u8,
-        pos: Pos,
+        pos: (usize, usize),
         brain: &mut Brain,
         width: usize,
         height: usize,
@@ -26,7 +26,7 @@ impl Strategy for SpiralStrategy {
 
         for dir in [facing.right(), facing, facing.left(), facing.left().left()] {
             if pos.can_move(grid, dir, width, height, player_id)
-                && matches!(grid[(pos + dir).y * width + (pos + dir).x], Cell::Empty)
+                && matches!(grid[(pos + dir).1 * width + (pos + dir).0], Cell::Empty)
             {
                 brain.facing = dir;
 

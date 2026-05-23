@@ -8,64 +8,47 @@ use crate::{
     strategies::{STRATEGIES, Strategy},
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct Pos {
-    pub x: usize,
-    pub y: usize,
+pub trait Pos {
+    fn neighbours(self, width: usize, height: usize) -> Vec<(usize, usize)>;
+
+    fn can_move(&self, grid: &[Cell], dir: Dir, width: usize, height: usize, id: u8) -> bool;
 }
 
-impl From<(usize, usize)> for Pos {
-    fn from(value: (usize, usize)) -> Self {
-        Self {
-            x: value.0,
-            y: value.1,
-        }
-    }
-}
-
-impl From<Pos> for (usize, usize) {
-    fn from(value: Pos) -> Self {
-        (value.x, value.y)
-    }
-}
-
-impl Pos {
-    pub const ZERO: Self = Self { x: 0, y: 0 };
-
-    pub fn neighbours(self, width: usize, height: usize) -> Vec<Self> {
+impl Pos for (usize, usize) {
+    fn neighbours(self, width: usize, height: usize) -> Vec<Self> {
         let mut neighbours_positions = Vec::new();
 
-        if self.x > 0 {
+        if self.0 > 0 {
             neighbours_positions.push(self + Dir::Left);
         }
 
-        if self.x < width - 1 {
+        if self.0 < width - 1 {
             neighbours_positions.push(self + Dir::Right);
         }
 
-        if self.y > 0 {
+        if self.1 > 0 {
             neighbours_positions.push(self + Dir::Up);
         }
 
-        if self.y < height - 1 {
+        if self.1 < height - 1 {
             neighbours_positions.push(self + Dir::Down);
         }
 
         neighbours_positions
     }
 
-    pub fn can_move(&self, grid: &[Cell], dir: Dir, width: usize, height: usize, id: u8) -> bool {
-        if self.x == 0 && matches!(dir, Dir::Left)
-            || self.x == width - 1 && matches!(dir, Dir::Right)
-            || self.y == 0 && matches!(dir, Dir::Up)
-            || self.y == height - 1 && matches!(dir, Dir::Down)
+    fn can_move(&self, grid: &[Cell], dir: Dir, width: usize, height: usize, id: u8) -> bool {
+        if self.0 == 0 && matches!(dir, Dir::Left)
+            || self.0 == width - 1 && matches!(dir, Dir::Right)
+            || self.1 == 0 && matches!(dir, Dir::Up)
+            || self.1 == height - 1 && matches!(dir, Dir::Down)
         {
             return false;
         }
 
         let new_pos = *self + dir;
 
-        match grid[new_pos.y * width + new_pos.x] {
+        match grid[new_pos.1 * width + new_pos.0] {
             Cell::Empty => true,
             Cell::Player(player_id) | Cell::PlayerClaimed(player_id) if player_id == id => true,
             _ => false,
@@ -104,9 +87,9 @@ impl Dir {
         }
     }
 
-    pub fn from_to(from: Pos, to: Pos) -> Self {
-        let dx: isize = to.x.cast_signed() - from.x.cast_signed();
-        let dy: isize = to.y.cast_signed() - from.y.cast_signed();
+    pub fn from_to(from: (usize, usize), to: (usize, usize)) -> Self {
+        let dx: isize = to.0.cast_signed() - from.0.cast_signed();
+        let dy: isize = to.1.cast_signed() - from.1.cast_signed();
 
         match (dx, dy) {
             (0, 0) => Self::None,
@@ -119,28 +102,16 @@ impl Dir {
     }
 }
 
-impl Add<Dir> for Pos {
+impl Add<Dir> for (usize, usize) {
     type Output = Self;
 
     fn add(self, rhs: Dir) -> Self::Output {
         match rhs {
             Dir::None => self,
-            Dir::Up => Self {
-                x: self.x,
-                y: self.y - 1,
-            },
-            Dir::Down => Self {
-                x: self.x,
-                y: self.y + 1,
-            },
-            Dir::Left => Self {
-                x: self.x - 1,
-                y: self.y,
-            },
-            Dir::Right => Self {
-                x: self.x + 1,
-                y: self.y,
-            },
+            Dir::Up => (self.0, self.1 - 1),
+            Dir::Down => (self.0, self.1 + 1),
+            Dir::Left => (self.0 - 1, self.1),
+            Dir::Right => (self.0 + 1, self.1),
         }
     }
 }
@@ -172,7 +143,7 @@ impl Default for Brain {
 #[derive(Debug, Clone)]
 pub struct Player {
     pub id: u8,
-    pub position: Option<Pos>,
+    pub position: Option<(usize, usize)>,
     pub brain: Brain,
 }
 
@@ -232,15 +203,15 @@ impl Game {
 
                 let new_pos = pos + dir;
 
-                if matches!(self.grid[new_pos.y * self.width + new_pos.x], Cell::Empty) {
+                if matches!(self.grid[new_pos.1 * self.width + new_pos.0], Cell::Empty) {
                     fill_enclosed_areas_players.push(player.id);
                 }
 
-                updated_positions.push((new_pos.x, new_pos.y, player.id));
+                updated_positions.push((new_pos.0, new_pos.1, player.id));
 
-                self.grid[pos.y * self.width + pos.x] = Cell::PlayerClaimed(player.id);
+                self.grid[pos.1 * self.width + pos.0] = Cell::PlayerClaimed(player.id);
 
-                let res = GameMessage::CellChanged(pos.x, pos.y, Cell::PlayerClaimed(player.id));
+                let res = GameMessage::CellChanged(pos.0, pos.1, Cell::PlayerClaimed(player.id));
 
                 #[cfg(not(target_arch = "wasm32"))]
                 self.tx
@@ -250,9 +221,9 @@ impl Game {
                 #[cfg(target_arch = "wasm32")]
                 response.push_back(res);
 
-                self.grid[new_pos.y * self.width + new_pos.x] = Cell::Player(player.id);
+                self.grid[new_pos.1 * self.width + new_pos.0] = Cell::Player(player.id);
 
-                let res = GameMessage::CellChanged(new_pos.x, new_pos.y, Cell::Player(player.id));
+                let res = GameMessage::CellChanged(new_pos.0, new_pos.1, Cell::Player(player.id));
 
                 #[cfg(not(target_arch = "wasm32"))]
                 self.tx
@@ -264,7 +235,7 @@ impl Game {
 
                 player.position = Some(new_pos);
 
-                let res = GameMessage::PlayerMoved(player.id, new_pos.x, new_pos.y);
+                let res = GameMessage::PlayerMoved(player.id, new_pos.0, new_pos.1);
 
                 #[cfg(not(target_arch = "wasm32"))]
                 self.tx
@@ -361,11 +332,11 @@ impl Game {
             .find(|player| player.id == id)
             .expect("Player not found")
             .position
-            .replace(Pos { x, y })
+            .replace((x, y))
         {
             self.set_cell_at(
-                pos.x,
-                pos.y,
+                pos.0,
+                pos.1,
                 leave_behind,
                 #[cfg(target_arch = "wasm32")]
                 response,
@@ -405,8 +376,8 @@ impl Game {
             .take()
         {
             self.set_cell_at(
-                pos.x,
-                pos.y,
+                pos.0,
+                pos.1,
                 Cell::Empty,
                 #[cfg(target_arch = "wasm32")]
                 response,

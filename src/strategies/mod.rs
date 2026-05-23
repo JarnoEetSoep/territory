@@ -4,7 +4,7 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
-use crate::game::{Brain, Cell, Dir, Pos};
+use crate::game::{Brain, Cell, Dir};
 
 mod do_nothing;
 mod hug_wall;
@@ -38,7 +38,7 @@ pub trait Strategy: Send + Sync {
         &self,
         grid: &[Cell],
         player_id: u8,
-        pos: Pos,
+        pos: (usize, usize),
         brain: &mut Brain,
         width: usize,
         height: usize,
