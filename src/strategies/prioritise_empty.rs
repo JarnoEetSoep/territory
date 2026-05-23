@@ -1,5 +1,5 @@
 use crate::{
-    game::{Cell, Dir, Player},
+    game::{Brain, Cell, Dir, Pos},
     strategies::Strategy,
 };
 
@@ -10,9 +10,15 @@ impl Strategy for PrioritiseEmptyStrategy {
         "Prioritise empty"
     }
 
-    fn step(&self, grid: &[Cell], player: &mut Player, width: usize, height: usize) -> Dir {
-        let pos = player.position.expect("Player doesn't have a position");
-
+    fn step(
+        &self,
+        grid: &[Cell],
+        player_id: u8,
+        pos: Pos,
+        _brain: &mut Brain,
+        width: usize,
+        height: usize,
+    ) -> Dir {
         let neighbours = pos.neighbours(width, height);
 
         let priority_dirs = neighbours
@@ -29,7 +35,7 @@ impl Strategy for PrioritiseEmptyStrategy {
             neighbours
                 .into_iter()
                 .map(|neighbour| Dir::from_to(pos, neighbour))
-                .filter(|dir| player.can_move(grid, *dir, width, height))
+                .filter(|dir| pos.can_move(grid, *dir, width, height, player_id))
                 .collect::<Vec<Dir>>(),
         )
         .unwrap_or(Dir::None)

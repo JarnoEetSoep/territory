@@ -1,7 +1,7 @@
 use std::collections::{HashMap, VecDeque};
 
 use crate::{
-    game::{Cell, Dir, Player},
+    game::{Brain, Cell, Dir, Pos},
     strategies::Strategy,
 };
 
@@ -12,9 +12,15 @@ impl Strategy for PathfindToEmptyStrategy {
         "Pathfind to empty"
     }
 
-    fn step(&self, grid: &[Cell], player: &mut Player, width: usize, height: usize) -> Dir {
-        let pos = player.position.expect("Player doesn't have a position");
-
+    fn step(
+        &self,
+        grid: &[Cell],
+        player_id: u8,
+        pos: Pos,
+        _brain: &mut Brain,
+        width: usize,
+        height: usize,
+    ) -> Dir {
         let mut target = None;
 
         let mut queue = VecDeque::new();
@@ -36,7 +42,7 @@ impl Strategy for PathfindToEmptyStrategy {
 
                 match grid[neighbour.y * width + neighbour.x] {
                     Cell::Empty => target = Some(neighbour),
-                    Cell::PlayerClaimed(id) if id == player.id => {
+                    Cell::PlayerClaimed(id) if id == player_id => {
                         visited[neighbour.y * width + neighbour.x] = true;
 
                         queue.push_back(neighbour);

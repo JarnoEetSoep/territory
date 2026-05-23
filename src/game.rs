@@ -1,7 +1,10 @@
+#[cfg(not(target_arch = "wasm32"))]
+use std::sync::mpsc::Sender;
 use std::{collections::VecDeque, ops::Add, sync::Arc};
 
+use crate::app::GameMessage;
 use crate::{
-    settings_panel::PlayerSettings,
+    settings_panel::{Command, CorePlayerSettings},
     strategies::{STRATEGIES, Strategy},
 };
 
@@ -20,7 +23,15 @@ impl From<(usize, usize)> for Pos {
     }
 }
 
+impl From<Pos> for (usize, usize) {
+    fn from(value: Pos) -> Self {
+        (value.x, value.y)
+    }
+}
+
 impl Pos {
+    pub const ZERO: Self = Self { x: 0, y: 0 };
+
     pub fn neighbours(self, width: usize, height: usize) -> Vec<Self> {
         let mut neighbours_positions = Vec::new();
 
@@ -41,6 +52,24 @@ impl Pos {
         }
 
         neighbours_positions
+    }
+
+    pub fn can_move(&self, grid: &[Cell], dir: Dir, width: usize, height: usize, id: u8) -> bool {
+        if self.x == 0 && matches!(dir, Dir::Left)
+            || self.x == width - 1 && matches!(dir, Dir::Right)
+            || self.y == 0 && matches!(dir, Dir::Up)
+            || self.y == height - 1 && matches!(dir, Dir::Down)
+        {
+            return false;
+        }
+
+        let new_pos = *self + dir;
+
+        match grid[new_pos.y * width + new_pos.x] {
+            Cell::Empty => true,
+            Cell::Player(player_id) | Cell::PlayerClaimed(player_id) if player_id == id => true,
+            _ => false,
+        }
     }
 }
 
@@ -116,15 +145,18 @@ impl Add<Dir> for Pos {
     }
 }
 
-impl Pos {
-    pub const ZERO: Self = Self { x: 0, y: 0 };
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Brain {
     pub strategy: Arc<dyn Strategy>,
     pub facing: Dir,
     pub memory: Vec<u8>,
+}
+
+impl Brain {
+    pub fn reset(&mut self) {
+        self.facing = Dir::None;
+        self.memory.clear();
+    }
 }
 
 impl Default for Brain {
@@ -137,43 +169,14 @@ impl Default for Brain {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Player {
     pub id: u8,
     pub position: Option<Pos>,
     pub brain: Brain,
 }
 
-impl Player {
-    pub fn can_move(&self, grid: &[Cell], dir: Dir, width: usize, height: usize) -> bool {
-        match self.position {
-            Some(pos) => {
-                if pos.x == 0 && matches!(dir, Dir::Left)
-                    || pos.x == width - 1 && matches!(dir, Dir::Right)
-                    || pos.y == 0 && matches!(dir, Dir::Up)
-                    || pos.y == height - 1 && matches!(dir, Dir::Down)
-                {
-                    return false;
-                }
-
-                let new_pos = pos + dir;
-
-                match grid[new_pos.y * width + new_pos.x] {
-                    Cell::Empty => true,
-                    Cell::Player(player_id) | Cell::PlayerClaimed(player_id)
-                        if player_id == self.id =>
-                    {
-                        true
-                    }
-                    _ => false,
-                }
-            }
-            None => false,
-        }
-    }
-}
-
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, Debug)]
 pub enum Cell {
     #[default]
     Empty,
@@ -181,38 +184,49 @@ pub enum Cell {
     PlayerClaimed(u8),
 }
 
-#[derive(Default)]
 pub struct Game {
     pub players: Vec<Player>,
     grid: Vec<Cell>,
     pub width: usize,
     pub height: usize,
     last_id: u8,
+    #[cfg(not(target_arch = "wasm32"))]
+    tx: Sender<GameMessage>,
 }
 
 impl Game {
-    pub fn new(width: usize, height: usize) -> Self {
+    pub fn new(
+        width: usize,
+        height: usize,
+        #[cfg(not(target_arch = "wasm32"))] sender: Sender<GameMessage>,
+    ) -> Self {
         Self {
+            players: Vec::new(),
+            grid: vec![Cell::default(); width * height],
             width,
             height,
-            grid: vec![Cell::default(); width * height],
-            ..Default::default()
+            last_id: 0,
+            #[cfg(not(target_arch = "wasm32"))]
+            tx: sender,
         }
     }
 
-    pub fn step(&mut self) {
+    pub fn step(&mut self, #[cfg(target_arch = "wasm32")] response: &mut VecDeque<GameMessage>) {
         let mut fill_enclosed_areas_players = Vec::new();
+        let mut updated_positions = Vec::new();
 
-        for player in &mut self.players {
+        self.players.iter_mut().for_each(|player| {
             if let Some(pos) = player.position {
                 let dir = Arc::clone(&player.brain.strategy).step(
                     &self.grid,
-                    player,
+                    player.id,
+                    player.position.expect("Player has no position"),
+                    &mut player.brain,
                     self.width,
                     self.height,
                 );
 
-                if !player.can_move(&self.grid, dir, self.width, self.height) {
+                if !pos.can_move(&self.grid, dir, self.width, self.height, player.id) {
                     return;
                 }
 
@@ -222,101 +236,231 @@ impl Game {
                     fill_enclosed_areas_players.push(player.id);
                 }
 
+                updated_positions.push((new_pos.x, new_pos.y, player.id));
+
                 self.grid[pos.y * self.width + pos.x] = Cell::PlayerClaimed(player.id);
+
+                let res = GameMessage::CellChanged(pos.x, pos.y, Cell::PlayerClaimed(player.id));
+
+                #[cfg(not(target_arch = "wasm32"))]
+                self.tx
+                    .send(res)
+                    .expect("Error while sending CellChanged GameMessage");
+
+                #[cfg(target_arch = "wasm32")]
+                response.push_back(res);
+
                 self.grid[new_pos.y * self.width + new_pos.x] = Cell::Player(player.id);
+
+                let res = GameMessage::CellChanged(new_pos.x, new_pos.y, Cell::Player(player.id));
+
+                #[cfg(not(target_arch = "wasm32"))]
+                self.tx
+                    .send(res)
+                    .expect("Error while sending CellChanged GameMessage");
+
+                #[cfg(target_arch = "wasm32")]
+                response.push_back(res);
+
                 player.position = Some(new_pos);
+
+                let res = GameMessage::PlayerMoved(player.id, new_pos.x, new_pos.y);
+
+                #[cfg(not(target_arch = "wasm32"))]
+                self.tx
+                    .send(res)
+                    .expect("Error while sending PlayerMoved GameMessage");
+
+                #[cfg(target_arch = "wasm32")]
+                response.push_back(res);
             }
-        }
+        });
 
         for player_id in fill_enclosed_areas_players {
-            self.fill_unreachable_areas(player_id);
+            self.fill_unreachable_areas(
+                player_id,
+                #[cfg(target_arch = "wasm32")]
+                response,
+            );
+        }
+
+        if self
+            .grid
+            .iter()
+            .filter(|cell| matches!(cell, Cell::Empty))
+            .count()
+            == 0
+        {
+            let res = GameMessage::Pause;
+
+            #[cfg(not(target_arch = "wasm32"))]
+            self.tx
+                .send(res)
+                .expect("Error while sending Pause GameMessage");
+
+            #[cfg(target_arch = "wasm32")]
+            response.push_back(res);
         }
     }
 
-    pub fn reset(&mut self, players: &[PlayerSettings]) {
-        self.grid.clear();
-
-        for _ in 0..self.width * self.height {
-            self.grid.push(Cell::Empty);
-        }
-
-        for player in &mut self.players {
-            player.brain = Brain {
-                strategy: Arc::clone(&player.brain.strategy),
-                ..Default::default()
-            };
-
-            if let Some(pos) = player.position {
-                let settings = players
-                    .iter()
-                    .find(|p| p.id == player.id)
-                    .expect("No settings found for player");
-
-                self.grid[pos.y * self.width + pos.x] = Cell::Empty;
-
-                player.position = Some(Pos {
-                    x: settings.x,
-                    y: settings.y,
-                });
-                self.grid[settings.y * self.width + settings.x] = Cell::Player(player.id);
+    pub fn reset(
+        &mut self,
+        players: &[CorePlayerSettings],
+        #[cfg(target_arch = "wasm32")] response: &mut VecDeque<GameMessage>,
+    ) {
+        for y in 0..self.height {
+            for x in 0..self.width {
+                self.set_cell_at(
+                    x,
+                    y,
+                    Cell::Empty,
+                    #[cfg(target_arch = "wasm32")]
+                    response,
+                );
             }
         }
 
+        self.players
+            .iter_mut()
+            .for_each(|player| player.brain.reset());
+
         for player in players {
             if player.enabled {
-                self.move_player_to(player.x, player.y, player.id);
+                self.move_player_to(
+                    player.x,
+                    player.y,
+                    player.id,
+                    Cell::Empty,
+                    #[cfg(target_arch = "wasm32")]
+                    response,
+                );
             }
         }
     }
 
     pub fn set_player_strategy(&mut self, id: u8, strategy: &Arc<dyn Strategy>) {
-        for player in &mut self.players {
-            if player.id == id {
-                player.brain.strategy = Arc::clone(strategy);
-            }
+        self.players
+            .iter_mut()
+            .find(|player| player.id == id)
+            .expect("Player not found")
+            .brain
+            .strategy = Arc::clone(strategy);
+    }
+
+    pub fn move_player_to(
+        &mut self,
+        x: usize,
+        y: usize,
+        id: u8,
+        leave_behind: Cell,
+        #[cfg(target_arch = "wasm32")] response: &mut VecDeque<GameMessage>,
+    ) {
+        if let Some(pos) = self
+            .players
+            .iter_mut()
+            .find(|player| player.id == id)
+            .expect("Player not found")
+            .position
+            .replace(Pos { x, y })
+        {
+            self.set_cell_at(
+                pos.x,
+                pos.y,
+                leave_behind,
+                #[cfg(target_arch = "wasm32")]
+                response,
+            );
+        }
+
+        self.set_cell_at(
+            x,
+            y,
+            Cell::Player(id),
+            #[cfg(target_arch = "wasm32")]
+            response,
+        );
+
+        let res = GameMessage::PlayerMoved(id, x, y);
+
+        #[cfg(not(target_arch = "wasm32"))]
+        self.tx
+            .send(res)
+            .expect("Error while sending PlayerMoved GameMessage");
+
+        #[cfg(target_arch = "wasm32")]
+        response.push_back(res);
+    }
+
+    pub fn disable_player(
+        &mut self,
+        id: u8,
+        #[cfg(target_arch = "wasm32")] response: &mut VecDeque<GameMessage>,
+    ) {
+        if let Some(pos) = self
+            .players
+            .iter_mut()
+            .find(|player| player.id == id)
+            .expect("Player not found")
+            .position
+            .take()
+        {
+            self.set_cell_at(
+                pos.x,
+                pos.y,
+                Cell::Empty,
+                #[cfg(target_arch = "wasm32")]
+                response,
+            );
         }
     }
 
-    pub fn move_player_to(&mut self, x: usize, y: usize, id: u8) {
-        for player in &mut self.players {
-            if player.id == id {
-                if let Some(pos) = player.position {
-                    self.grid[pos.y * self.width + pos.x] = Cell::Empty;
-                }
-
-                player.position = Some(Pos { x, y });
-                self.grid[y * self.width + x] = Cell::Player(player.id);
-            }
-        }
-    }
-
-    pub fn disable_player(&mut self, id: u8) {
-        for player in &mut self.players {
-            if player.id == id {
-                if let Some(pos) = player.position {
-                    self.grid[pos.y * self.width + pos.x] = Cell::PlayerClaimed(player.id);
-                }
-
-                player.position = None;
-            }
-        }
-    }
-
-    pub fn resize(&mut self, width: usize, height: usize) {
+    pub fn resize(
+        &mut self,
+        width: usize,
+        height: usize,
+        #[cfg(target_arch = "wasm32")] response: &mut VecDeque<GameMessage>,
+    ) {
         self.width = width;
         self.height = height;
         self.grid = vec![Cell::default(); width * height];
+
+        for player in self.players.clone() {
+            self.disable_player(
+                player.id,
+                #[cfg(target_arch = "wasm32")]
+                response,
+            );
+        }
     }
 
     pub fn get_cell_at(&self, x: usize, y: usize) -> &Cell {
         &self.grid[y * self.width + x]
     }
 
-    pub fn set_cell_at(&mut self, x: usize, y: usize, cell: Cell) {
+    pub fn set_cell_at(
+        &mut self,
+        x: usize,
+        y: usize,
+        cell: Cell,
+        #[cfg(target_arch = "wasm32")] response: &mut VecDeque<GameMessage>,
+    ) {
         self.grid[y * self.width + x] = cell;
+
+        let res = GameMessage::CellChanged(x, y, cell);
+
+        #[cfg(not(target_arch = "wasm32"))]
+        self.tx
+            .send(res)
+            .expect("Error while sending CellChanged GameMessage");
+
+        #[cfg(target_arch = "wasm32")]
+        response.push_back(res);
     }
 
-    pub fn add_player(&mut self) -> u8 {
+    pub fn add_player(
+        &mut self,
+        #[cfg(target_arch = "wasm32")] response: &mut VecDeque<GameMessage>,
+    ) -> u8 {
         self.last_id += 1;
 
         self.players.push(Player {
@@ -325,25 +469,61 @@ impl Game {
             brain: Brain::default(),
         });
 
+        let res = GameMessage::PlayerAdded(self.last_id);
+
+        #[cfg(not(target_arch = "wasm32"))]
+        self.tx
+            .send(res)
+            .expect("Error while sending PlayerAdded GameMessage");
+
+        #[cfg(target_arch = "wasm32")]
+        response.push_back(res);
+
         self.last_id
     }
 
-    pub fn remove_player(&mut self, id: u8) {
+    pub fn remove_player(
+        &mut self,
+        id: u8,
+        #[cfg(target_arch = "wasm32")] response: &mut VecDeque<GameMessage>,
+    ) {
         self.players.retain(|player| player.id != id);
 
-        for cell in &mut self.grid {
-            match cell {
-                Cell::Empty => {}
-                Cell::Player(player_id) | Cell::PlayerClaimed(player_id) => {
-                    if *player_id == id {
-                        *cell = Cell::Empty;
+        for y in 0..self.height {
+            for x in 0..self.width {
+                match self.get_cell_at(x, y) {
+                    Cell::Player(player_id) | Cell::PlayerClaimed(player_id)
+                        if *player_id == id =>
+                    {
+                        self.set_cell_at(
+                            x,
+                            y,
+                            Cell::Empty,
+                            #[cfg(target_arch = "wasm32")]
+                            response,
+                        );
                     }
+                    _ => {}
                 }
             }
         }
+
+        let res = GameMessage::PlayerRemoved(id);
+
+        #[cfg(not(target_arch = "wasm32"))]
+        self.tx
+            .send(res)
+            .expect("Error while sending PlayerRemoved GameMessage");
+
+        #[cfg(target_arch = "wasm32")]
+        response.push_back(res);
     }
 
-    fn fill_unreachable_areas(&mut self, player: u8) {
+    fn fill_unreachable_areas(
+        &mut self,
+        player: u8,
+        #[cfg(target_arch = "wasm32")] response: &mut VecDeque<GameMessage>,
+    ) {
         let mut reachable = vec![false; self.grid.len()];
         let mut queue = VecDeque::new();
 
@@ -396,10 +576,69 @@ impl Game {
             }
         }
 
-        for (idx, cell) in self.grid.iter_mut().enumerate() {
-            if !reachable[idx] && matches!(cell, Cell::Empty) {
-                *cell = Cell::PlayerClaimed(player);
+        for y in 0..self.height {
+            for x in 0..self.width {
+                if !reachable[y * self.width + x] && matches!(self.get_cell_at(x, y), Cell::Empty) {
+                    self.set_cell_at(
+                        x,
+                        y,
+                        Cell::PlayerClaimed(player),
+                        #[cfg(target_arch = "wasm32")]
+                        response,
+                    );
+                }
             }
+        }
+    }
+
+    pub fn run_command(
+        &mut self,
+        cmd: Command,
+        #[cfg(target_arch = "wasm32")] response: &mut VecDeque<GameMessage>,
+    ) {
+        match cmd {
+            Command::ApplyGridSize(width, height) => self.resize(
+                width,
+                height,
+                #[cfg(target_arch = "wasm32")]
+                response,
+            ),
+            Command::AddPlayer => {
+                self.add_player(
+                    #[cfg(target_arch = "wasm32")]
+                    response,
+                );
+            }
+            Command::RemovePlayer(id) => self.remove_player(
+                id,
+                #[cfg(target_arch = "wasm32")]
+                response,
+            ),
+            Command::SetStrategy(id, strategy) => {
+                self.set_player_strategy(
+                    id,
+                    STRATEGIES.get(&strategy).expect("Strategy not found"),
+                );
+            }
+            Command::MovePlayer(id, x, y) => self.move_player_to(
+                x,
+                y,
+                id,
+                Cell::Empty,
+                #[cfg(target_arch = "wasm32")]
+                response,
+            ),
+            Command::DisablePlayer(id) => self.disable_player(
+                id,
+                #[cfg(target_arch = "wasm32")]
+                response,
+            ),
+            Command::Reset(players) => self.reset(
+                &players,
+                #[cfg(target_arch = "wasm32")]
+                response,
+            ),
+            _ => {}
         }
     }
 }

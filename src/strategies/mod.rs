@@ -4,7 +4,7 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
-use crate::game::{Cell, Dir, Player};
+use crate::game::{Brain, Cell, Dir, Pos};
 
 mod do_nothing;
 mod hug_wall;
@@ -34,7 +34,15 @@ pub static STRATEGIES: LazyLock<HashMap<u8, Arc<dyn Strategy>>> = LazyLock::new(
 pub trait Strategy: Send + Sync {
     fn get_name(&self) -> &'static str;
 
-    fn step(&self, grid: &[Cell], player: &mut Player, width: usize, height: usize) -> Dir;
+    fn step(
+        &self,
+        grid: &[Cell],
+        player_id: u8,
+        pos: Pos,
+        brain: &mut Brain,
+        width: usize,
+        height: usize,
+    ) -> Dir;
 }
 
 impl Debug for dyn Strategy {

@@ -1,5 +1,5 @@
 use crate::{
-    game::{Cell, Dir, Player},
+    game::{Brain, Cell, Dir, Pos},
     strategies::Strategy,
 };
 
@@ -10,27 +10,33 @@ impl Strategy for SpiralStrategy {
         "Spiral"
     }
 
-    fn step(&self, grid: &[Cell], player: &mut Player, width: usize, height: usize) -> Dir {
-        let pos = player.position.expect("Player has no position");
-
-        let facing = match player.brain.facing {
+    fn step(
+        &self,
+        grid: &[Cell],
+        player_id: u8,
+        pos: Pos,
+        brain: &mut Brain,
+        width: usize,
+        height: usize,
+    ) -> Dir {
+        let facing = match brain.facing {
             Dir::None => Dir::Right,
-            _ => player.brain.facing,
+            _ => brain.facing,
         };
 
         for dir in [facing.right(), facing, facing.left(), facing.left().left()] {
-            if player.can_move(grid, dir, width, height)
+            if pos.can_move(grid, dir, width, height, player_id)
                 && matches!(grid[(pos + dir).y * width + (pos + dir).x], Cell::Empty)
             {
-                player.brain.facing = dir;
+                brain.facing = dir;
 
                 return dir;
             }
         }
 
         for dir in [facing.right(), facing, facing.left(), facing.left().left()] {
-            if player.can_move(grid, dir, width, height) {
-                player.brain.facing = dir;
+            if pos.can_move(grid, dir, width, height, player_id) {
+                brain.facing = dir;
 
                 return dir;
             }

@@ -1,5 +1,5 @@
 use crate::{
-    game::{Cell, Dir, Player},
+    game::{Brain, Cell, Dir, Pos},
     strategies::Strategy,
 };
 
@@ -10,7 +10,15 @@ impl Strategy for DoNothingStrategy {
         "Do nothing"
     }
 
-    fn step(&self, _grid: &[Cell], _player: &mut Player, _width: usize, _height: usize) -> Dir {
+    fn step(
+        &self,
+        _grid: &[Cell],
+        _player_id: u8,
+        _pos: Pos,
+        _brain: &mut Brain,
+        _width: usize,
+        _height: usize,
+    ) -> Dir {
         Dir::None
     }
 }

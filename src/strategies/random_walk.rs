@@ -1,5 +1,5 @@
 use crate::{
-    game::{Cell, Dir, Player},
+    game::{Brain, Cell, Dir, Pos},
     strategies::Strategy,
 };
 
@@ -10,14 +10,20 @@ impl Strategy for RandomWalkStrategy {
         "Random walk"
     }
 
-    fn step(&self, grid: &[Cell], player: &mut Player, width: usize, height: usize) -> Dir {
-        let pos = player.position.expect("Player doesn't have a position");
-
+    fn step(
+        &self,
+        grid: &[Cell],
+        player_id: u8,
+        pos: Pos,
+        _brain: &mut Brain,
+        width: usize,
+        height: usize,
+    ) -> Dir {
         fastrand::choice(
             pos.neighbours(width, height)
                 .into_iter()
                 .map(|neighbour| Dir::from_to(pos, neighbour))
-                .filter(|dir| player.can_move(grid, *dir, width, height))
+                .filter(|dir| pos.can_move(grid, *dir, width, height, player_id))
                 .collect::<Vec<Dir>>(),
         )
         .unwrap_or(Dir::None)

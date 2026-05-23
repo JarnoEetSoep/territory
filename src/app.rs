@@ -1,14 +1,12 @@
 #[cfg(not(target_arch = "wasm32"))]
 use core::time::Duration;
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
+use std::collections::{HashMap, HashSet, VecDeque};
 #[cfg(not(target_arch = "wasm32"))]
 use std::{
     sync::{
+        Arc,
         atomic::Ordering,
-        mpsc::{self, Sender, TryRecvError},
+        mpsc::{self, Receiver, Sender, TryRecvError},
     },
     thread::{self, JoinHandle},
 };
@@ -16,8 +14,8 @@ use std::{
 use web_time::{Duration, Instant};
 
 use egui::{
-    Align2, CentralPanel, Color32, MenuBar, Panel, Pos2, Rect, RichText, Sense, Stroke, StrokeKind,
-    Ui, Vec2, Window, widgets,
+    Align2, CentralPanel, Color32, ColorImage, MenuBar, Panel, Pos2, Rect, RichText, Sense,
+    TextureHandle, Ui, Window, widgets,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use egui::{Key, Modifiers};
@@ -25,28 +23,66 @@ use egui_extras::{Column, TableBuilder};
 
 use crate::{
     game::{Cell, Game},
-    settings_panel::{Command, SettingsPanel},
-    strategies::STRATEGIES,
+    settings_panel::{Command, CorePlayerSettings, PlayerSettings, SettingsPanel},
 };
 
 #[cfg(not(target_arch = "wasm32"))]
-pub enum ThreadMessage {
+pub enum AppMessage {
     Start,
     Stop,
     Terminate,
+    SendCommand(Command),
+}
+
+#[derive(Debug)]
+pub enum GameMessage {
+    CellChanged(usize, usize, Cell),
+    PlayerAdded(u8),
+    PlayerRemoved(u8),
+    PlayerMoved(u8, usize, usize),
+    Pause,
+}
+
+pub struct RenderState {
+    game_texture: TextureHandle,
+    width: usize,
+    height: usize,
+    offset_x: f32,
+    offset_y: f32,
+    cell_size: f32,
+    rect: Rect,
+}
+
+impl std::fmt::Debug for RenderState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RenderState")
+            .field("game_texture", &self.game_texture.name())
+            .field("width", &self.width)
+            .field("height", &self.height)
+            .field("offset_x", &self.offset_x)
+            .field("offset_y", &self.offset_y)
+            .field("cell_size", &self.cell_size)
+            .field("rect", &self.rect)
+            .finish()
+    }
 }
 
 pub struct AppState {
     running: bool,
     settings_panel: SettingsPanel,
-    game: Arc<Mutex<Game>>,
+    #[cfg(target_arch = "wasm32")]
+    game: Game,
     #[cfg(not(target_arch = "wasm32"))]
     game_thread: Option<JoinHandle<()>>,
     #[cfg(not(target_arch = "wasm32"))]
-    tx: Sender<ThreadMessage>,
-    claimed_amount: HashMap<u8, u32>,
+    tx: Sender<AppMessage>,
+    #[cfg(not(target_arch = "wasm32"))]
+    rx: Receiver<GameMessage>,
+    claimed_amount: HashMap<u8, HashSet<(usize, usize)>>,
     #[cfg(target_arch = "wasm32")]
     last_step_time: Instant,
+    changed_cells: VecDeque<(usize, usize, Cell)>,
+    render_state: RenderState,
 }
 
 pub struct App {
@@ -54,33 +90,41 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
-        let game = Arc::<Mutex<Game>>::default();
+    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        #[cfg(not(target_arch = "wasm32"))]
+        let (game_tx, rx) = mpsc::channel();
+        let game = Game::new(
+            1,
+            1,
+            #[cfg(not(target_arch = "wasm32"))]
+            game_tx,
+        );
+        #[cfg(not(target_arch = "wasm32"))]
+        let mut game = game;
         let settings_panel = SettingsPanel::default();
 
         #[cfg(not(target_arch = "wasm32"))]
-        let (tx, rx) = mpsc::channel::<ThreadMessage>();
+        let (tx, game_rx) = mpsc::channel::<AppMessage>();
         #[cfg(not(target_arch = "wasm32"))]
         let mut running = false;
         #[cfg(not(target_arch = "wasm32"))]
-        let game_mutex = Arc::clone(&game);
-        #[cfg(not(target_arch = "wasm32"))]
         let step_delay = Arc::clone(&settings_panel.step_delay);
         #[cfg(not(target_arch = "wasm32"))]
-        let ctx = _cc.egui_ctx.clone();
+        let ctx = cc.egui_ctx.clone();
 
         #[cfg(not(target_arch = "wasm32"))]
         let handle = thread::spawn(move || {
             loop {
-                match rx.try_recv() {
+                match game_rx.try_recv() {
                     Ok(msg) => match msg {
-                        ThreadMessage::Start => {
+                        AppMessage::Start => {
                             running = true;
                         }
-                        ThreadMessage::Stop => {
+                        AppMessage::Stop => {
                             running = false;
                         }
-                        ThreadMessage::Terminate => break,
+                        AppMessage::Terminate => break,
+                        AppMessage::SendCommand(cmd) => game.run_command(cmd),
                     },
                     Err(TryRecvError::Disconnected) => break,
                     Err(TryRecvError::Empty) => {
@@ -92,10 +136,7 @@ impl App {
                                 _ => Duration::from_millis(delay),
                             });
 
-                            game_mutex
-                                .lock()
-                                .expect("Error while acquiring lock on game mutex")
-                                .step();
+                            game.step();
 
                             ctx.request_repaint();
                         }
@@ -108,21 +149,37 @@ impl App {
             state: AppState {
                 running: false,
                 settings_panel,
+                #[cfg(target_arch = "wasm32")]
                 game,
                 #[cfg(not(target_arch = "wasm32"))]
                 game_thread: Some(handle),
                 #[cfg(not(target_arch = "wasm32"))]
                 tx,
+                #[cfg(not(target_arch = "wasm32"))]
+                rx,
                 claimed_amount: HashMap::new(),
                 #[cfg(target_arch = "wasm32")]
                 last_step_time: Instant::now(),
+                changed_cells: VecDeque::new(),
+                render_state: RenderState {
+                    game_texture: cc.egui_ctx.load_texture(
+                        "game-image",
+                        ColorImage::filled([1, 1], Color32::TRANSPARENT),
+                        Default::default(),
+                    ),
+                    width: 1,
+                    height: 1,
+                    offset_x: 0.,
+                    offset_y: 0.,
+                    cell_size: 0.,
+                    rect: Rect::ZERO,
+                },
             },
         }
     }
 }
 
 impl eframe::App for App {
-    #[expect(clippy::too_many_lines)]
     fn ui(&mut self, ui: &mut Ui, frame: &mut eframe::Frame) {
         #[cfg(not(target_arch = "wasm32"))]
         if ui.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F11)) {
@@ -136,7 +193,7 @@ impl eframe::App for App {
         if ui.input(|i| i.viewport().close_requested()) {
             self.state
                 .tx
-                .send(ThreadMessage::Terminate)
+                .send(AppMessage::Terminate)
                 .expect("Error while sending Terminate ThreadMessage");
             self.state
                 .game_thread
@@ -146,16 +203,14 @@ impl eframe::App for App {
                 .expect("Error while joining game thread");
         }
 
+        let mut res = VecDeque::<GameMessage>::new();
+
         #[cfg(target_arch = "wasm32")]
         if self.state.running {
             if self.state.last_step_time.elapsed()
                 > Duration::from_millis(self.state.settings_panel.step_delay)
             {
-                self.state
-                    .game
-                    .lock()
-                    .expect("Error while acquiring lock on game mutex")
-                    .step();
+                self.state.game.step(&mut res);
 
                 self.state.last_step_time = Instant::now();
             }
@@ -163,83 +218,42 @@ impl eframe::App for App {
             ui.ctx().request_repaint();
         }
 
+        let mut cmd = Command::Nothing;
+
         Panel::top("top_panel").show_inside(ui, |ui| {
             MenuBar::new().ui(ui, |ui| {
                 ui.visuals_mut().button_frame = false;
 
-                self.bar_contents(ui, frame);
+                self.bar_contents(ui, frame, &mut cmd);
             });
         });
-
-        let mut cmd = Command::Nothing;
 
         CentralPanel::default().show_inside(ui, |ui| {
             self.settings_panel(ui, frame, &mut cmd);
 
-            self.game_panel(ui, frame);
+            self.game_panel(ui, frame, &cmd);
 
             self.stats_window(ui, frame);
         });
 
-        match cmd {
-            Command::Nothing => {}
-            Command::ApplyGridSize => {
-                self.state
-                    .game
-                    .lock()
-                    .expect("Error while acquiring lock on game mutex")
-                    .resize(
-                        self.state.settings_panel.width,
-                        self.state.settings_panel.height,
-                    );
-            }
-            Command::AddPlayer => {
-                self.state
-                    .game
-                    .lock()
-                    .expect("Error while acquiring lock on game mutex")
-                    .add_player();
-            }
-            Command::RemovePlayer(id) => {
-                self.state
-                    .settings_panel
-                    .players_settings
-                    .retain(|player| player.id != id);
+        #[cfg(not(target_arch = "wasm32"))]
+        while let Ok(msg) = self.state.rx.try_recv() {
+            res.push_back(msg);
+        }
 
-                self.state
-                    .claimed_amount
-                    .retain(|&player_id, _| player_id != id);
+        if !matches!(cmd, Command::Nothing) {
+            #[cfg(not(target_arch = "wasm32"))]
+            self.state
+                .tx
+                .send(AppMessage::SendCommand(cmd))
+                .expect("Error while sending SendCommand AppMessage");
 
-                self.state
-                    .game
-                    .lock()
-                    .expect("Error while acquiring lock on game mutex")
-                    .remove_player(id);
-            }
-            Command::SetStrategy(id, strategy) => {
-                self.state
-                    .game
-                    .lock()
-                    .expect("Error while acquiring lock on game mutex")
-                    .set_player_strategy(
-                        id,
-                        STRATEGIES.get(&strategy).expect("Strategy not found"),
-                    );
-            }
-            Command::MovePlayer(id, x, y) => {
-                self.state
-                    .game
-                    .lock()
-                    .expect("Error while acquiring lock on game mutex")
-                    .move_player_to(x, y, id);
-            }
-            Command::DisablePlayer(id) => {
-                self.state
-                    .game
-                    .lock()
-                    .expect("Error while acquiring lock on game mutex")
-                    .disable_player(id);
-            }
+            #[cfg(target_arch = "wasm32")]
+            self.state.game.run_command(cmd, &mut res);
+        }
+
+        while let Some(msg) = res.pop_front() {
+            self.handle_game_message(&msg);
         }
     }
 }
@@ -258,21 +272,11 @@ impl App {
                 });
 
                 ui.separator();
-                self.state.settings_panel.ui(
-                    ui,
-                    frame,
-                    cmd,
-                    &self
-                        .state
-                        .game
-                        .lock()
-                        .expect("Error while acquiring lock on game mutex")
-                        .players,
-                );
+                self.state.settings_panel.ui(ui, frame, cmd);
             });
     }
 
-    fn bar_contents(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
+    fn bar_contents(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame, cmd: &mut Command) {
         ui.add_space(4.0);
 
         widgets::global_theme_preference_switch(ui);
@@ -284,11 +288,19 @@ impl App {
         ui.separator();
 
         if ui.button("Reset").clicked() {
+            *cmd = Command::Reset(
+                self.state
+                    .settings_panel
+                    .players_settings
+                    .iter()
+                    .map(|settings| settings.core_settings)
+                    .collect(),
+            );
+
             self.state
-                .game
-                .lock()
-                .expect("Error while acquiring lock on game mutex")
-                .reset(&self.state.settings_panel.players_settings);
+                .claimed_amount
+                .iter_mut()
+                .for_each(|(_, cells)| cells.clear());
         }
 
         ui.separator();
@@ -307,90 +319,194 @@ impl App {
             if self.state.running {
                 self.state
                     .tx
-                    .send(ThreadMessage::Start)
-                    .expect("Error while sending Start ThreadMessage");
+                    .send(AppMessage::Start)
+                    .expect("Error while sending Start AppMessage");
             } else {
                 self.state
                     .tx
-                    .send(ThreadMessage::Stop)
-                    .expect("Error while sending Stop ThreadMessage");
+                    .send(AppMessage::Stop)
+                    .expect("Error while sending Stop AppMessage");
             }
         }
     }
 
-    fn game_panel(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
-        let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::click());
-
-        self.state.claimed_amount.clear();
-
-        let game = self
-            .state
-            .game
-            .lock()
-            .expect("Error while acquiring lock on game mutex");
-
-        let width = game.width;
-        let height = game.height;
-        let mut offset_x = 0.;
-        let mut offset_y = 0.;
-        let cell_size;
-
-        if response.rect.aspect_ratio() * height as f32 > width as f32 {
-            cell_size = response.rect.height() / height as f32;
-
-            offset_x = 0.5 * (response.rect.width() - cell_size * width as f32);
-        } else {
-            cell_size = response.rect.width() / width as f32;
-
-            offset_y = 0.5 * (response.rect.height() - cell_size * height as f32);
+    #[expect(clippy::too_many_lines)]
+    fn game_panel(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame, cmd: &Command) {
+        if ui.available_width() < 1. || ui.available_height() < 1. {
+            return;
         }
 
-        for y in 0..height {
-            for x in 0..width {
-                let center = Pos2::new(
-                    response.rect.left() + offset_x + (x as f32 + 0.5) * cell_size,
-                    response.rect.top() + offset_y + (y as f32 + 0.5) * cell_size,
-                );
+        let (res, painter) = ui.allocate_painter(ui.available_size(), Sense::click());
 
-                let cell = game.get_cell_at(x, y);
+        if let Command::ApplyGridSize(width, height) = cmd {
+            self.state.render_state.width = *width;
+            self.state.render_state.height = *height;
+        }
 
-                let mut fill_color = match cell {
-                    Cell::Empty => Color32::GRAY.gamma_multiply(0.2),
-                    Cell::Player(id) | Cell::PlayerClaimed(id) => {
-                        let rgb = self
-                            .state
-                            .settings_panel
-                            .players_settings
-                            .iter()
-                            .find(|settings| settings.id == *id)
-                            .expect("Player not found")
-                            .color;
+        if res.rect.aspect_ratio() * self.state.render_state.height as f32
+            > self.state.render_state.width as f32
+        {
+            self.state.render_state.cell_size =
+                res.rect.height() / self.state.render_state.height as f32;
 
-                        Color32::from_rgb(rgb[0], rgb[1], rgb[2])
-                    }
-                };
+            self.state.render_state.offset_x = 0.5
+                * (res.rect.width()
+                    - self.state.render_state.cell_size * self.state.render_state.width as f32);
+            self.state.render_state.offset_y = 0.;
+        } else {
+            self.state.render_state.cell_size =
+                res.rect.width() / self.state.render_state.width as f32;
 
-                if let Cell::PlayerClaimed(_) = cell {
-                    fill_color = fill_color.gamma_multiply(0.5);
+            self.state.render_state.offset_y = 0.5
+                * (res.rect.height()
+                    - self.state.render_state.cell_size * self.state.render_state.height as f32);
+            self.state.render_state.offset_x = 0.;
+        }
+
+        let new_rect = Rect::from_two_pos(
+            Pos2::new(
+                res.rect.left() + self.state.render_state.offset_x,
+                res.rect.top() + self.state.render_state.offset_y,
+            ),
+            Pos2::new(
+                res.rect.right() - self.state.render_state.offset_x,
+                res.rect.bottom() - self.state.render_state.offset_y,
+            ),
+        );
+
+        if self.state.render_state.rect != new_rect {
+            self.state.render_state.rect = new_rect;
+            self.state.render_state.game_texture.set(
+                ColorImage::filled(
+                    [
+                        self.state.render_state.width * self.state.render_state.cell_size as usize,
+                        self.state.render_state.height * self.state.render_state.cell_size as usize,
+                    ],
+                    Color32::TRANSPARENT,
+                ),
+                Default::default(),
+            );
+
+            for y in 0..self.state.render_state.height {
+                for x in 0..self.state.render_state.width {
+                    self.draw_cell_at(x, y, Cell::Empty);
                 }
+            }
 
-                match cell {
-                    Cell::Empty => {}
-                    Cell::Player(id) | Cell::PlayerClaimed(id) => {
-                        let value = self.state.claimed_amount.get(id).unwrap_or(&0) + 1;
-                        self.state.claimed_amount.insert(*id, value);
-                    }
+            let mut claimed = Vec::new();
+
+            #[expect(clippy::iter_over_hash_type)]
+            for (id, claimed_cells) in &self.state.claimed_amount {
+                #[expect(clippy::iter_over_hash_type)]
+                for (x, y) in claimed_cells {
+                    claimed.push((*x, *y, *id));
                 }
+            }
 
-                painter.rect(
-                    Rect::from_center_size(center, Vec2::new(cell_size, cell_size)),
-                    0.0,
-                    fill_color,
-                    Stroke::new(self.state.settings_panel.border_thickness, Color32::GRAY),
-                    StrokeKind::Middle,
-                );
+            for (x, y, id) in claimed {
+                self.draw_cell_at(x, y, Cell::PlayerClaimed(id));
+            }
+
+            let mut players = Vec::new();
+
+            for player in &self.state.settings_panel.players_settings {
+                if let Some((x, y)) = player.current_position {
+                    players.push((x, y, player.core_settings.id));
+                }
+            }
+
+            for (x, y, id) in players {
+                self.draw_cell_at(x, y, Cell::Player(id));
             }
         }
+
+        while let Some((x, y, cell)) = self.state.changed_cells.pop_front() {
+            if let Cell::PlayerClaimed(id) = cell {
+                match self.state.claimed_amount.get_mut(&id) {
+                    Some(claimed) => {
+                        claimed.insert((x, y));
+                    }
+                    None => {
+                        self.state.claimed_amount.insert(id, HashSet::new());
+                    }
+                }
+            }
+
+            self.draw_cell_at(x, y, cell);
+        }
+
+        if let Command::ColorChanged(id) = cmd {
+            let mut redraw_cells = Vec::new();
+
+            if let Some(cells) = self.state.claimed_amount.get(id) {
+                #[expect(clippy::iter_over_hash_type)]
+                for (x, y) in cells {
+                    redraw_cells.push((*x, *y));
+                }
+            }
+
+            for (x, y) in redraw_cells {
+                self.draw_cell_at(x, y, Cell::PlayerClaimed(*id));
+            }
+
+            if let Some((x, y)) = self
+                .state
+                .settings_panel
+                .players_settings
+                .iter()
+                .find(|p| p.core_settings.id == *id)
+                .expect("Player not found")
+                .current_position
+            {
+                self.draw_cell_at(x, y, Cell::Player(*id));
+            }
+        }
+
+        painter.image(
+            self.state.render_state.game_texture.id(),
+            self.state.render_state.rect,
+            Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+            Color32::WHITE,
+        );
+    }
+
+    fn draw_cell_at(&mut self, x: usize, y: usize, cell: Cell) {
+        let center = [
+            x * self.state.render_state.cell_size as usize,
+            y * self.state.render_state.cell_size as usize,
+        ];
+
+        let mut fill_color = match cell {
+            Cell::Empty => Color32::GRAY.gamma_multiply(0.2),
+            Cell::Player(id) | Cell::PlayerClaimed(id) => {
+                let rgb = self
+                    .state
+                    .settings_panel
+                    .players_settings
+                    .iter()
+                    .find(|settings| settings.core_settings.id == id)
+                    .expect("Player not found")
+                    .color;
+
+                Color32::from_rgb(rgb[0], rgb[1], rgb[2])
+            }
+        };
+
+        if let Cell::PlayerClaimed(_) = cell {
+            fill_color = fill_color.gamma_multiply(0.5);
+        }
+
+        self.state.render_state.game_texture.set_partial(
+            center,
+            ColorImage::filled(
+                [
+                    self.state.render_state.cell_size as usize,
+                    self.state.render_state.cell_size as usize,
+                ],
+                fill_color,
+            ),
+            Default::default(),
+        );
     }
 
     fn stats_window(&self, ui: &Ui, _frame: &mut eframe::Frame) {
@@ -409,23 +525,23 @@ impl App {
                         let total =
                             self.state.settings_panel.width * self.state.settings_panel.height;
 
-                        let mut values = self
-                            .state
-                            .claimed_amount
-                            .iter()
-                            .collect::<Vec<(&u8, &u32)>>();
-                        values.sort_by(|a, b| b.1.cmp(a.1));
+                        let mut values =
+                            self.state
+                                .claimed_amount
+                                .iter()
+                                .collect::<Vec<(&u8, &HashSet<(usize, usize)>)>>();
+                        values.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
 
-                        for (player_id, taken) in values {
+                        for (player_id, cells_taken) in values {
                             let settings = self
                                 .state
                                 .settings_panel
                                 .players_settings
                                 .iter()
-                                .find(|player| player.id == *player_id)
+                                .find(|player| player.core_settings.id == *player_id)
                                 .expect("Player not found");
 
-                            if settings.enabled {
+                            if settings.core_settings.enabled {
                                 body.row(20.0, |mut row| {
                                     row.col(|ui| {
                                         let (r, g, b) = (
@@ -442,11 +558,19 @@ impl App {
                                         });
                                     });
 
+                                    let mut taken = cells_taken.len() + 1;
+
+                                    if let Some((x, y)) = settings.current_position
+                                        && cells_taken.contains(&(x, y))
+                                    {
+                                        taken -= 1;
+                                    }
+
                                     row.col(|ui| {
                                         ui.horizontal(|ui| {
                                             ui.label(format!(
                                                 "{:.2}%",
-                                                *taken as f32 / total as f32 * 100.
+                                                taken as f32 / total as f32 * 100.
                                             ));
                                         });
                                     });
@@ -455,5 +579,59 @@ impl App {
                         }
                     });
             });
+    }
+
+    fn handle_game_message(&mut self, msg: &GameMessage) {
+        match *msg {
+            GameMessage::CellChanged(x, y, cell) => {
+                self.state.changed_cells.push_back((x, y, cell));
+            }
+            GameMessage::PlayerAdded(id) => {
+                self.state
+                    .settings_panel
+                    .players_settings
+                    .push(PlayerSettings {
+                        core_settings: CorePlayerSettings {
+                            id,
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    });
+
+                self.state.claimed_amount.insert(id, HashSet::new());
+            }
+            GameMessage::PlayerRemoved(id) => {
+                self.state
+                    .settings_panel
+                    .players_settings
+                    .retain(|player| player.core_settings.id != id);
+
+                self.state
+                    .claimed_amount
+                    .retain(|&player_id, _| player_id != id);
+
+                self.state.claimed_amount.remove(&id);
+            }
+            GameMessage::PlayerMoved(id, x, y) => {
+                let player = self
+                    .state
+                    .settings_panel
+                    .players_settings
+                    .iter_mut()
+                    .find(|player| player.core_settings.id == id)
+                    .expect("Player not found");
+
+                player.current_position = Some((x, y));
+            }
+            GameMessage::Pause => {
+                self.state.running = false;
+
+                #[cfg(not(target_arch = "wasm32"))]
+                self.state
+                    .tx
+                    .send(AppMessage::Stop)
+                    .expect("Error while sending Stop AppMessage");
+            }
+        }
     }
 }

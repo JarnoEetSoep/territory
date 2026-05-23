@@ -8,31 +8,32 @@ use eframe::Frame;
 use egui::{Button, ComboBox, DragValue, TextEdit, Ui};
 use egui_extras::{Column, TableBuilder};
 
-use crate::{
-    game::{Player, Pos},
-    strategies::STRATEGIES,
-};
+use crate::strategies::STRATEGIES;
 
-pub struct PlayerSettings {
+#[derive(Clone, Copy, Default)]
+pub struct CorePlayerSettings {
     pub id: u8,
-    pub color: [u8; 3],
-    pub name: String,
-    pub strategy: u8,
     pub x: usize,
     pub y: usize,
     pub enabled: bool,
 }
 
+pub struct PlayerSettings {
+    pub core_settings: CorePlayerSettings,
+    pub color: [u8; 3],
+    pub name: String,
+    pub strategy: u8,
+    pub current_position: Option<(usize, usize)>,
+}
+
 impl Default for PlayerSettings {
     fn default() -> Self {
         Self {
-            id: 0,
+            core_settings: CorePlayerSettings::default(),
             color: [255, 255, 255],
             name: "New player".to_owned(),
             strategy: 0,
-            x: 0,
-            y: 0,
-            enabled: false,
+            current_position: None,
         }
     }
 }
@@ -41,7 +42,6 @@ pub struct SettingsPanel {
     pub open: bool,
     pub width: usize,
     pub height: usize,
-    pub border_thickness: f32,
     pub players_settings: Vec<PlayerSettings>,
     #[cfg(not(target_arch = "wasm32"))]
     pub step_delay: Arc<AtomicU64>,
@@ -55,7 +55,6 @@ impl Default for SettingsPanel {
             open: true,
             width: 50,
             height: 50,
-            border_thickness: 1.0,
             players_settings: Vec::new(),
             #[cfg(not(target_arch = "wasm32"))]
             step_delay: Arc::new(AtomicU64::new(50)),
@@ -69,23 +68,19 @@ impl Default for SettingsPanel {
 pub enum Command {
     #[default]
     Nothing,
-    ApplyGridSize,
+    ApplyGridSize(usize, usize),
     AddPlayer,
     RemovePlayer(u8),
     SetStrategy(u8, u8),
     MovePlayer(u8, usize, usize),
     DisablePlayer(u8),
+    Reset(Vec<CorePlayerSettings>),
+    ColorChanged(u8),
 }
 
 #[expect(clippy::too_many_lines)]
 impl SettingsPanel {
-    pub fn ui(
-        &mut self,
-        ui: &mut Ui,
-        _frame: &mut Frame,
-        cmd: &mut Command,
-        players: &Vec<Player>,
-    ) {
+    pub fn ui(&mut self, ui: &mut Ui, _frame: &mut Frame, cmd: &mut Command) {
         TableBuilder::new(ui)
             .id_salt("grid_settings")
             .column(Column::remainder())
@@ -141,22 +136,12 @@ impl SettingsPanel {
 
                     row.col(|ui| {
                         if ui.add(Button::new("Apply")).clicked() {
-                            *cmd = Command::ApplyGridSize;
+                            *cmd = Command::ApplyGridSize(self.width, self.height);
+
+                            self.players_settings
+                                .iter_mut()
+                                .for_each(|player| player.core_settings.enabled = false);
                         }
-                    });
-                });
-
-                body.row(20.0, |mut row| {
-                    row.col(|ui| {
-                        ui.label("Cell border thickness:");
-                    });
-
-                    row.col(|ui| {
-                        ui.add(
-                            DragValue::new(&mut self.border_thickness)
-                                .speed(0.05)
-                                .range(0..=2),
-                        );
                     });
                 });
 
@@ -185,115 +170,111 @@ impl SettingsPanel {
             .column(Column::remainder())
             .column(Column::auto())
             .body(|mut body| {
-                for player in players {
-                    let player_settings: Option<&mut PlayerSettings> =
-                        self.players_settings.iter_mut().find(|p| p.id == player.id);
+                for settings in &mut self.players_settings {
+                    body.row(20.0, |mut row| {
+                        row.col(|ui| {
+                            if ui
+                                .checkbox(&mut settings.core_settings.enabled, "")
+                                .changed()
+                            {
+                                if settings.core_settings.enabled {
+                                    *cmd = Command::MovePlayer(
+                                        settings.core_settings.id,
+                                        settings.core_settings.x,
+                                        settings.core_settings.y,
+                                    );
+                                } else {
+                                    *cmd = Command::DisablePlayer(settings.core_settings.id);
+                                }
+                            }
+                        });
 
-                    match player_settings {
-                        Some(settings) => {
-                            body.row(20.0, |mut row| {
-                                row.col(|ui| {
-                                    if ui.checkbox(&mut settings.enabled, "").changed() {
-                                        if settings.enabled {
-                                            *cmd = Command::MovePlayer(
-                                                settings.id,
-                                                settings.x,
-                                                settings.y,
-                                            );
-                                        } else {
-                                            *cmd = Command::DisablePlayer(settings.id);
-                                        }
-                                    }
-                                });
+                        row.col(|ui| {
+                            ui.add(TextEdit::singleline(&mut settings.name));
+                        });
 
-                                row.col(|ui| {
-                                    ui.add(TextEdit::singleline(&mut settings.name));
-                                });
+                        row.col(|ui| {
+                            let before = settings.strategy;
 
-                                row.col(|ui| {
-                                    let before = settings.strategy;
+                            ComboBox::from_id_salt(format!(
+                                "player_{}_strategy_selector",
+                                settings.core_settings.id
+                            ))
+                            .selected_text(
+                                STRATEGIES
+                                    .get(&settings.strategy)
+                                    .expect("Strategy not found")
+                                    .get_name(),
+                            )
+                            .show_ui(ui, |ui| {
+                                let mut strategy_ids =
+                                    STRATEGIES.keys().clone().collect::<Vec<&u8>>();
 
-                                    ComboBox::from_id_salt(format!(
-                                        "player_{}_strategy_selector",
-                                        settings.id
-                                    ))
-                                    .selected_text(
-                                        STRATEGIES
-                                            .get(&settings.strategy)
-                                            .expect("Strategy not found")
-                                            .get_name(),
-                                    )
-                                    .show_ui(ui, |ui| {
-                                        let mut strategy_ids =
-                                            STRATEGIES.keys().clone().collect::<Vec<&u8>>();
+                                strategy_ids.sort();
 
-                                        strategy_ids.sort();
-
-                                        for strategy_id in strategy_ids {
-                                            ui.selectable_value(
-                                                &mut settings.strategy,
-                                                *strategy_id,
-                                                STRATEGIES[strategy_id].get_name(),
-                                            );
-                                        }
-                                    });
-
-                                    if before != settings.strategy {
-                                        *cmd = Command::SetStrategy(settings.id, settings.strategy);
-                                    }
-                                });
-
-                                row.col(|_| {});
-
-                                row.col(|ui| {
-                                    if ui.button("×").clicked() {
-                                        *cmd = Command::RemovePlayer(settings.id);
-                                    }
-                                });
+                                for strategy_id in strategy_ids {
+                                    ui.selectable_value(
+                                        &mut settings.strategy,
+                                        *strategy_id,
+                                        STRATEGIES[strategy_id].get_name(),
+                                    );
+                                }
                             });
 
-                            body.row(20.0, |mut row| {
-                                row.col(|_| {});
+                            if before != settings.strategy {
+                                *cmd = Command::SetStrategy(
+                                    settings.core_settings.id,
+                                    settings.strategy,
+                                );
+                            }
+                        });
 
-                                row.col(|ui| {
-                                    ui.horizontal(|ui| {
-                                        ui.label("(");
-                                        let x = ui.add(
-                                            DragValue::new(&mut settings.x)
-                                                .range(0..=self.width - 1),
-                                        );
-                                        ui.label(",");
-                                        let y = ui.add(
-                                            DragValue::new(&mut settings.y)
-                                                .range(0..=self.height - 1),
-                                        );
-                                        ui.label(")");
+                        row.col(|_| {});
 
-                                        if (x.changed() || y.changed()) && settings.enabled {
-                                            *cmd = Command::MovePlayer(
-                                                settings.id,
-                                                settings.x,
-                                                settings.y,
-                                            );
-                                        }
-                                    });
-                                });
+                        row.col(|ui| {
+                            if ui.button("×").clicked() {
+                                *cmd = Command::RemovePlayer(settings.core_settings.id);
+                            }
+                        });
+                    });
 
-                                row.col(|ui| {
-                                    ui.color_edit_button_srgb(&mut settings.color);
-                                });
+                    body.row(20.0, |mut row| {
+                        row.col(|_| {});
+
+                        row.col(|ui| {
+                            ui.horizontal(|ui| {
+                                ui.label("(");
+                                let x = ui.add(
+                                    DragValue::new(&mut settings.core_settings.x)
+                                        .range(0..=self.width - 1),
+                                );
+                                ui.label(",");
+                                let y = ui.add(
+                                    DragValue::new(&mut settings.core_settings.y)
+                                        .range(0..=self.height - 1),
+                                );
+                                ui.label(")");
+
+                                if (x.changed() || y.changed()) && settings.core_settings.enabled {
+                                    *cmd = Command::MovePlayer(
+                                        settings.core_settings.id,
+                                        settings.core_settings.x,
+                                        settings.core_settings.y,
+                                    );
+                                }
                             });
+                        });
+
+                        let color_before = settings.color;
+
+                        row.col(|ui| {
+                            ui.color_edit_button_srgb(&mut settings.color);
+                        });
+
+                        if settings.color != color_before {
+                            *cmd = Command::ColorChanged(settings.core_settings.id);
                         }
-                        None => {
-                            self.players_settings.push(PlayerSettings {
-                                id: player.id,
-                                x: player.position.unwrap_or(Pos::ZERO).x,
-                                y: player.position.unwrap_or(Pos::ZERO).y,
-                                enabled: player.position.is_some(),
-                                ..Default::default()
-                            });
-                        }
-                    }
+                    });
                 }
             });
     }

@@ -1,5 +1,5 @@
 use crate::{
-    game::{Cell, Dir, Player},
+    game::{Brain, Cell, Dir, Pos},
     strategies::{Strategy, spiral::SpiralStrategy},
 };
 
@@ -13,22 +13,30 @@ impl Strategy for HugWallStrategy {
         "Hug wall"
     }
 
-    fn step(&self, grid: &[Cell], player: &mut Player, width: usize, height: usize) -> Dir {
-        if player.brain.memory.is_empty() {
-            player.brain.memory.push(GO_RIGHT);
+    fn step(
+        &self,
+        grid: &[Cell],
+        player_id: u8,
+        pos: Pos,
+        brain: &mut Brain,
+        width: usize,
+        height: usize,
+    ) -> Dir {
+        if brain.memory.is_empty() {
+            brain.memory.push(GO_RIGHT);
         }
 
-        if player.brain.memory[0] == GO_RIGHT {
-            if !player.can_move(grid, Dir::Right, width, height) {
-                player.brain.memory[0] = SPIRAL;
-                player.brain.facing = Dir::Up;
+        if brain.memory[0] == GO_RIGHT {
+            if !pos.can_move(grid, Dir::Right, width, height, player_id) {
+                brain.memory[0] = SPIRAL;
+                brain.facing = Dir::Up;
 
-                return SpiralStrategy.step(grid, player, width, height);
+                return SpiralStrategy.step(grid, player_id, pos, brain, width, height);
             }
 
             Dir::Right
         } else {
-            SpiralStrategy.step(grid, player, width, height)
+            SpiralStrategy.step(grid, player_id, pos, brain, width, height)
         }
     }
 }
