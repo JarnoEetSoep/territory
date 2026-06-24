@@ -1,6 +1,6 @@
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::mpsc::Sender;
-use std::{collections::VecDeque, ops::Add, sync::Arc};
+use std::{collections::VecDeque, ops::Add};
 
 use crate::app::GameMessage;
 use crate::{
@@ -118,7 +118,7 @@ impl Add<Dir> for (usize, usize) {
 
 #[derive(Debug, Clone)]
 pub struct Brain {
-    pub strategy: Arc<dyn Strategy>,
+    pub strategy: &'static Strategy,
     pub facing: Dir,
     pub memory: Vec<u8>,
 }
@@ -133,7 +133,7 @@ impl Brain {
 impl Default for Brain {
     fn default() -> Self {
         Self {
-            strategy: Arc::clone(STRATEGIES.get(&0).expect("Strategy not found")),
+            strategy: STRATEGIES.first().expect("Strategy not found"),
             facing: Default::default(),
             memory: Default::default(),
         }
@@ -188,7 +188,7 @@ impl Game {
 
         self.players.iter_mut().for_each(|player| {
             if let Some(pos) = player.position {
-                let dir = Arc::clone(&player.brain.strategy).step(
+                let dir = player.brain.strategy.step_fn()(
                     &self.grid,
                     player.id,
                     player.position.expect("Player has no position"),
@@ -309,13 +309,13 @@ impl Game {
         }
     }
 
-    pub fn set_player_strategy(&mut self, id: u8, strategy: &Arc<dyn Strategy>) {
+    pub fn set_player_strategy(&mut self, id: u8, strategy: &'static Strategy) {
         self.players
             .iter_mut()
             .find(|player| player.id == id)
             .expect("Player not found")
             .brain
-            .strategy = Arc::clone(strategy);
+            .strategy = strategy;
     }
 
     pub fn move_player_to(
@@ -586,10 +586,7 @@ impl Game {
                 response,
             ),
             Command::SetStrategy(id, strategy) => {
-                self.set_player_strategy(
-                    id,
-                    STRATEGIES.get(&strategy).expect("Strategy not found"),
-                );
+                self.set_player_strategy(id, &STRATEGIES[strategy]);
             }
             Command::MovePlayer(id, x, y) => self.move_player_to(
                 x,

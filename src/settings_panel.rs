@@ -22,7 +22,7 @@ pub struct PlayerSettings {
     pub core_settings: CorePlayerSettings,
     pub color: [u8; 3],
     pub name: String,
-    pub strategy: u8,
+    pub strategy: usize,
     pub current_position: Option<(usize, usize)>,
 }
 
@@ -71,7 +71,7 @@ pub enum Command {
     ApplyGridSize(usize, usize),
     AddPlayer,
     RemovePlayer(u8),
-    SetStrategy(u8, u8),
+    SetStrategy(u8, usize),
     MovePlayer(u8, usize, usize),
     DisablePlayer(u8),
     Reset(Vec<CorePlayerSettings>),
@@ -202,21 +202,16 @@ impl SettingsPanel {
                             ))
                             .selected_text(
                                 STRATEGIES
-                                    .get(&settings.strategy)
+                                    .get(settings.strategy)
                                     .expect("Strategy not found")
                                     .get_name(),
                             )
                             .show_ui(ui, |ui| {
-                                let mut strategy_ids =
-                                    STRATEGIES.keys().clone().collect::<Vec<&u8>>();
-
-                                strategy_ids.sort();
-
-                                for strategy_id in strategy_ids {
+                                for (id, strategy) in STRATEGIES.iter().enumerate() {
                                     ui.selectable_value(
                                         &mut settings.strategy,
-                                        *strategy_id,
-                                        STRATEGIES[strategy_id].get_name(),
+                                        id,
+                                        strategy.get_name(),
                                     );
                                 }
                             });
