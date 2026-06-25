@@ -11,12 +11,18 @@ rust-version = "1.92"
 all-features = true
 targets = ["x86_64-unknown-linux-gnu", "wasm32-unknown-unknown"]
 
+[workspace]
+resolver = "3"
+members = ["strategies/do_nothing", "strategies/hug_wall", "strategies/pathfind_prioritise_empty", "strategies/pathfind_to_empty","strategies/prioritise_empty","strategies/random_walk", "strategies/spiral"]
+
 [dependencies]
 egui = "0.34.1"
 eframe = "0.34.1"
 log = "0.4.27"
 egui_extras = "0.34.2"
 fastrand = "2.4.1"
+wasmtime = "44.0.3"
+wasmtime-wasi = "44.0.3"
 
 # native:
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
@@ -35,27 +41,11 @@ opt-level = 2 # fast and small wasm
 [profile.dev.package."*"]
 opt-level = 2
 
-
-[patch.crates-io]
-
-# If you want to use the bleeding edge version of egui and eframe:
-# egui = { git = "https://github.com/emilk/egui", branch = "main" }
-# eframe = { git = "https://github.com/emilk/egui", branch = "main" }
-
-# If you fork https://github.com/emilk/egui you can test with:
-# egui = { path = "../egui/crates/egui" }
-# eframe = { path = "../egui/crates/eframe" }
-
-
-# ----------------------------------------------------------------------------------------
-# Lints:
-
 [lints]
 workspace = true
 
-[workspace.lints.rust]
-unsafe_code = "deny"
-
+[package.lints.rust]
+unsafe_code = "warn"
 elided_lifetimes_in_paths = "warn"
 future_incompatible = { level = "warn", priority = -1 }
 nonstandard_style = { level = "warn", priority = -1 }

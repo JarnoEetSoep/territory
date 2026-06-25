@@ -7,3 +7,5 @@ pub mod game;
 pub mod settings_panel;
 
 pub mod app;
+
+pub mod bindings;

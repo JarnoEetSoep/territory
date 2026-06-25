@@ -1,0 +1,45 @@
+package game:strategy-plugin;
+
+interface logger {
+    error: func(msg: string);
+    warn: func(msg: string);
+    info: func(msg: string);
+    debug: func(msg: string);
+}
+
+interface random {
+    from-vec: func(range: list<u32>) -> option<u32>;
+}
+
+world strategy-plugin {
+    import logger;
+    import random;
+    
+    enum dir {
+        none,
+        up,
+        down,
+        left,
+        right
+    }
+
+    variant cell {
+        empty,
+        player(u8),
+        player-claimed(u8),
+    }
+
+    record brain {
+        facing: dir,
+        memory: list<u8>,
+    }
+
+    record action {
+        move: dir,
+        brain: option<brain>,
+    }
+
+    export get-name: func() -> string;
+
+    export step: func(grid: list<cell>, player-id: u8, pos: tuple<u32, u32>, brain: brain, width: u32, height: u32) -> action;
+}

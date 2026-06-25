@@ -1,6 +1,9 @@
 #[cfg(not(target_arch = "wasm32"))]
 use core::time::Duration;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::{
+    collections::{HashMap, HashSet, VecDeque},
+    sync::LazyLock,
+};
 #[cfg(not(target_arch = "wasm32"))]
 use std::{
     sync::{
@@ -22,8 +25,10 @@ use egui::{Key, Modifiers};
 use egui_extras::{Column, TableBuilder};
 
 use crate::{
-    game::{Cell, Game},
+    bindings::Cell,
+    game::Game,
     settings_panel::{Command, CorePlayerSettings, PlayerSettings, SettingsPanel},
+    strategies::STRATEGIES,
 };
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -91,16 +96,10 @@ pub struct App {
 
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        LazyLock::force(&STRATEGIES);
+
         #[cfg(not(target_arch = "wasm32"))]
         let (game_tx, rx) = mpsc::channel();
-        let game = Game::new(
-            1,
-            1,
-            #[cfg(not(target_arch = "wasm32"))]
-            game_tx,
-        );
-        #[cfg(not(target_arch = "wasm32"))]
-        let mut game = game;
         let settings_panel = SettingsPanel::default();
 
         #[cfg(not(target_arch = "wasm32"))]
@@ -114,6 +113,8 @@ impl App {
 
         #[cfg(not(target_arch = "wasm32"))]
         let handle = thread::spawn(move || {
+            let mut game = Game::new(1, 1, game_tx);
+
             loop {
                 match game_rx.try_recv() {
                     Ok(msg) => match msg {
@@ -150,7 +151,7 @@ impl App {
                 running: false,
                 settings_panel,
                 #[cfg(target_arch = "wasm32")]
-                game,
+                game: Game::new(1, 1),
                 #[cfg(not(target_arch = "wasm32"))]
                 game_thread: Some(handle),
                 #[cfg(not(target_arch = "wasm32"))]

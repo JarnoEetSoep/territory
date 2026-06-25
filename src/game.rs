@@ -1,9 +1,10 @@
+use std::collections::VecDeque;
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::mpsc::Sender;
-use std::{collections::VecDeque, ops::Add};
 
-use crate::app::GameMessage;
 use crate::{
+    app::GameMessage,
+    bindings::{Brain, Cell, Dir},
     settings_panel::{Command, CorePlayerSettings},
     strategies::{STRATEGIES, Strategy},
 };
@@ -56,103 +57,12 @@ impl Pos for (usize, usize) {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Default)]
-pub enum Dir {
-    #[default]
-    None,
-    Up,
-    Down,
-    Left,
-    Right,
-}
-
-impl Dir {
-    pub fn right(&self) -> Self {
-        match self {
-            Self::None => Self::None,
-            Self::Up => Self::Right,
-            Self::Down => Self::Left,
-            Self::Left => Self::Up,
-            Self::Right => Self::Down,
-        }
-    }
-
-    pub fn left(&self) -> Self {
-        match self {
-            Self::None => Self::None,
-            Self::Up => Self::Left,
-            Self::Down => Self::Right,
-            Self::Left => Self::Down,
-            Self::Right => Self::Up,
-        }
-    }
-
-    pub fn from_to(from: (usize, usize), to: (usize, usize)) -> Self {
-        let dx: isize = to.0.cast_signed() - from.0.cast_signed();
-        let dy: isize = to.1.cast_signed() - from.1.cast_signed();
-
-        match (dx, dy) {
-            (0, 0) => Self::None,
-            (1, 0) => Self::Right,
-            (-1, 0) => Self::Left,
-            (0, 1) => Self::Down,
-            (0, -1) => Self::Up,
-            _ => panic!("From and to are not adjacent"),
-        }
-    }
-}
-
-impl Add<Dir> for (usize, usize) {
-    type Output = Self;
-
-    fn add(self, rhs: Dir) -> Self::Output {
-        match rhs {
-            Dir::None => self,
-            Dir::Up => (self.0, self.1 - 1),
-            Dir::Down => (self.0, self.1 + 1),
-            Dir::Left => (self.0 - 1, self.1),
-            Dir::Right => (self.0 + 1, self.1),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Brain {
-    pub strategy: &'static Strategy,
-    pub facing: Dir,
-    pub memory: Vec<u8>,
-}
-
-impl Brain {
-    pub fn reset(&mut self) {
-        self.facing = Dir::None;
-        self.memory.clear();
-    }
-}
-
-impl Default for Brain {
-    fn default() -> Self {
-        Self {
-            strategy: STRATEGIES.first().expect("Strategy not found"),
-            facing: Default::default(),
-            memory: Default::default(),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Player {
     pub id: u8,
     pub position: Option<(usize, usize)>,
     pub brain: Brain,
-}
-
-#[derive(Default, Clone, Copy, Debug)]
-pub enum Cell {
-    #[default]
-    Empty,
-    Player(u8),
-    PlayerClaimed(u8),
+    pub strategy: Strategy,
 }
 
 pub struct Game {
@@ -188,7 +98,7 @@ impl Game {
 
         self.players.iter_mut().for_each(|player| {
             if let Some(pos) = player.position {
-                let dir = player.brain.strategy.step_fn()(
+                let action = player.strategy.step(
                     &self.grid,
                     player.id,
                     player.position.expect("Player has no position"),
@@ -196,6 +106,12 @@ impl Game {
                     self.width,
                     self.height,
                 );
+
+                if let Some(brain) = action.brain {
+                    player.brain = brain;
+                }
+
+                let dir = action.move_;
 
                 if !pos.can_move(&self.grid, dir, self.width, self.height, player.id) {
                     return;
@@ -309,12 +225,11 @@ impl Game {
         }
     }
 
-    pub fn set_player_strategy(&mut self, id: u8, strategy: &'static Strategy) {
+    pub fn set_player_strategy(&mut self, id: u8, strategy: Strategy) {
         self.players
             .iter_mut()
             .find(|player| player.id == id)
             .expect("Player not found")
-            .brain
             .strategy = strategy;
     }
 
@@ -395,9 +310,15 @@ impl Game {
         self.height = height;
         self.grid = vec![Cell::default(); width * height];
 
-        for player in self.players.clone() {
+        let mut player_ids = Vec::new();
+
+        for player in &self.players {
+            player_ids.push(player.id);
+        }
+
+        for id in player_ids {
             self.disable_player(
-                player.id,
+                id,
                 #[cfg(target_arch = "wasm32")]
                 response,
             );
@@ -438,6 +359,7 @@ impl Game {
             id: self.last_id,
             position: None,
             brain: Brain::default(),
+            strategy: STRATEGIES[0].build(),
         });
 
         let res = GameMessage::PlayerAdded(self.last_id);
@@ -586,7 +508,7 @@ impl Game {
                 response,
             ),
             Command::SetStrategy(id, strategy) => {
-                self.set_player_strategy(id, &STRATEGIES[strategy]);
+                self.set_player_strategy(id, STRATEGIES[strategy].build());
             }
             Command::MovePlayer(id, x, y) => self.move_player_to(
                 x,
